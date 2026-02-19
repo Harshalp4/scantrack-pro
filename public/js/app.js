@@ -1318,7 +1318,16 @@ window.deleteLocation = async function (id, name) {
 let usersCache = [];
 
 async function loadEmployees() {
-    const locationId = getSelectedLocation();
+    // Ensure location filter is populated first
+    await ensureEmployeeLocationFilter();
+
+    // Use employee-specific location filter, not global filter
+    let locationId = '';
+    if (currentUser.role === 'super_admin') {
+        locationId = $('employeeLocationFilter')?.value || '';
+    } else {
+        locationId = currentUser.location_id || '';
+    }
     const roleFilter = $('employeeRoleFilter')?.value || '';
     let params = '?';
     if (locationId) params += `location_id=${locationId}&`;
@@ -1355,8 +1364,32 @@ async function loadEmployees() {
     }
 }
 
-$('employeeRoleFilter')?.addEventListener('change', loadEmployees);
-$('employeeLocationFilter')?.addEventListener('change', loadEmployees);
+// Employee filters - ensure they trigger reload
+$('employeeRoleFilter')?.addEventListener('change', () => {
+    loadEmployees();
+});
+
+$('employeeLocationFilter')?.addEventListener('change', () => {
+    loadEmployees();
+});
+
+// Populate employee location filter if not already done
+async function ensureEmployeeLocationFilter() {
+    const sel = $('employeeLocationFilter');
+    if (!sel || sel.options.length > 1) return; // Already loaded
+
+    if (currentUser.role === 'super_admin') {
+        try {
+            const locations = await apiFetch('/locations');
+            sel.innerHTML = '<option value="">All Locations</option>';
+            locations.forEach(loc => {
+                sel.innerHTML += `<option value="${loc.id}">${loc.name}</option>`;
+            });
+        } catch (e) {
+            console.error('Failed to load locations for employee filter', e);
+        }
+    }
+}
 
 $('addEmployeeBtn')?.addEventListener('click', async () => {
     let locationsHTML = '';
