@@ -219,6 +219,17 @@ function navigateTo(page) {
     };
     $('pageTitle').textContent = titles[page] || 'Dashboard';
 
+    // Hide/show global location filter based on page
+    // Pages with their own filter: employees, expenses
+    const globalSelector = $('globalLocationSelector');
+    if (globalSelector && currentUser?.role === 'super_admin') {
+        if (page === 'employees' || page === 'expenses') {
+            globalSelector.style.display = 'none';
+        } else {
+            globalSelector.style.display = '';
+        }
+    }
+
     // Load page data
     switch (page) {
         case 'dashboard': loadDashboard(); break;
