@@ -223,10 +223,10 @@ function navigateTo(page) {
     $('pageTitle').textContent = titles[page] || 'Dashboard';
 
     // Hide/show global location filter based on page
-    // Pages with their own filter: employees, expenses
+    // Pages with their own filter: dashboard, employees, expenses
     const globalSelector = $('globalLocationSelector');
     if (globalSelector && currentUser?.role === 'super_admin') {
-        if (page === 'employees' || page === 'expenses') {
+        if (page === 'dashboard' || page === 'employees' || page === 'expenses') {
             globalSelector.style.display = 'none';
         } else {
             globalSelector.style.display = '';
@@ -316,6 +316,14 @@ async function loadDashboard() {
         $('operatorDashboard').style.display = 'none';
         $('adminDashboard').style.display = 'block';
 
+        // Show loading state
+        $('totalScansAll').textContent = '...';
+        $('totalRevenueAll').textContent = '...';
+        $('totalLabourAll').textContent = '...';
+        $('totalExpensesAll').textContent = '...';
+        const loadingTbody = $('locationSummaryBody');
+        if (loadingTbody) loadingTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+
         // Load location filter (super_admin only)
         if (role === 'super_admin') {
             await loadDashboardLocationFilter();
@@ -403,11 +411,27 @@ async function loadDashboard() {
 // Load operator dashboard (for scanner_operator and file_handler)
 async function loadOperatorDashboard() {
     try {
+        // Initialize date filters if not set
+        initializeOperatorDateFilters();
+
         // Get operator's own records
         const today = getTodayStr();
         const records = await apiFetch(`/records?user_id=${currentUser.id}`);
 
-        // Calculate totals
+        // Get the user's rate from currentUser (fetched during login)
+        const rate = currentUser.scan_rate || 0.10;
+        const salaryType = currentUser.salary_type || 'per_page';
+
+        // Display rate info
+        if ($('myRateDisplay')) {
+            if (salaryType === 'fixed') {
+                $('myRateDisplay').textContent = `₹${formatNumber(currentUser.fixed_salary || 0)} (Fixed Monthly)`;
+            } else {
+                $('myRateDisplay').textContent = `₹${rate.toFixed(2)} per scan`;
+            }
+        }
+
+        // Calculate all-time totals
         let totalScans = 0;
         let todayScans = 0;
 
@@ -420,38 +444,199 @@ async function loadOperatorDashboard() {
             }
         });
 
+        // Calculate earnings
+        let totalEarnings = 0;
+        let todayEarnings = 0;
+
+        if (salaryType === 'fixed') {
+            // For fixed salary, show monthly amount
+            totalEarnings = currentUser.fixed_salary || 0;
+            todayEarnings = (currentUser.fixed_salary || 0) / 30; // Approximate daily
+        } else {
+            totalEarnings = totalScans * rate;
+            todayEarnings = todayScans * rate;
+        }
+
         $('myTotalScans').textContent = formatNumber(totalScans);
         $('myTodayScans').textContent = formatNumber(todayScans);
+        $('myTotalEarnings').textContent = '₹' + formatNumber(Math.round(totalEarnings));
+        $('myTodayEarnings').textContent = '₹' + formatNumber(Math.round(todayEarnings));
+
+        // Load filtered history with rate info
+        loadOperatorHistory(records, rate, salaryType);
 
     } catch (err) {
         showToast('Failed to load your data: ' + err.message, 'error');
     }
 }
 
-// Operator Add Scan button
-$('operatorAddScanBtn')?.addEventListener('click', () => {
-    const today = getTodayStr();
-    const formattedDate = formatDate(today);
+function initializeOperatorDateFilters() {
+    const startInput = $('operatorStartDate');
+    const endInput = $('operatorEndDate');
+    if (!startInput || !endInput) return;
 
-    openModal(`Add My Scan Count - ${formattedDate}`, `
+    // Only set defaults if empty
+    if (!startInput.value || !endInput.value) {
+        const today = new Date();
+        const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+        const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+        const formatDate = (d) => d.toISOString().split('T')[0];
+        startInput.value = formatDate(firstDay);
+        endInput.value = formatDate(lastDay);
+    }
+}
+
+function loadOperatorHistory(records, rate = 0.10, salaryType = 'per_page') {
+    const startDate = $('operatorStartDate')?.value;
+    const endDate = $('operatorEndDate')?.value;
+    const tbody = $('operatorHistoryBody');
+    if (!tbody) return;
+
+    // Filter records by date range
+    let filteredRecords = records;
+    if (startDate && endDate) {
+        filteredRecords = records.filter(r => {
+            return r.record_date >= startDate && r.record_date <= endDate;
+        });
+    }
+
+    // Sort by date descending (most recent first)
+    filteredRecords.sort((a, b) => b.record_date.localeCompare(a.record_date));
+
+    // Calculate filtered totals
+    let filteredScans = 0;
+    let filteredEarnings = 0;
+
+    filteredRecords.forEach(r => {
+        if (r.status === 'present' && r.scan_count) {
+            filteredScans += r.scan_count;
+            if (salaryType === 'per_page') {
+                filteredEarnings += r.scan_count * rate;
+            }
+        }
+    });
+
+    // For fixed salary, calculate proportional earnings based on days worked
+    if (salaryType === 'fixed' && currentUser.fixed_salary) {
+        const daysWorked = filteredRecords.filter(r => r.status === 'present').length;
+        filteredEarnings = (currentUser.fixed_salary / 30) * daysWorked;
+    }
+
+    $('myFilteredScans').textContent = formatNumber(filteredScans);
+    $('myFilteredEarnings').textContent = '₹' + formatNumber(Math.round(filteredEarnings));
+    $('operatorHistoryTotal').innerHTML = `<strong>${formatNumber(filteredScans)}</strong>`;
+    $('operatorHistoryEarningsTotal').innerHTML = `<strong style="color:#22c55e;">₹${formatNumber(Math.round(filteredEarnings))}</strong>`;
+
+    if (filteredRecords.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);"><i class="fas fa-inbox" style="font-size:24px;display:block;margin-bottom:10px;"></i>No records found for this period</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = filteredRecords.map(r => {
+        const statusBadge = r.status === 'present'
+            ? '<span style="color:#22c55e;"><i class="fas fa-check-circle"></i> Present</span>'
+            : r.status === 'absent'
+            ? '<span style="color:#ef4444;"><i class="fas fa-times-circle"></i> Absent</span>'
+            : '<span style="color:#f59e0b;"><i class="fas fa-plane"></i> Leave</span>';
+
+        // Calculate daily earnings
+        let dailyEarnings = '-';
+        if (r.status === 'present') {
+            if (salaryType === 'fixed') {
+                dailyEarnings = '₹' + formatNumber(Math.round((currentUser.fixed_salary || 0) / 30));
+            } else {
+                dailyEarnings = '₹' + formatNumber(Math.round((r.scan_count || 0) * rate));
+            }
+        }
+
+        return `
+            <tr>
+                <td>${formatDate(r.record_date)}</td>
+                <td>${statusBadge}</td>
+                <td style="font-weight:600;color:var(--primary);">${r.status === 'present' ? formatNumber(r.scan_count || 0) : '-'}</td>
+                <td style="font-weight:600;color:#22c55e;">${dailyEarnings}</td>
+                <td style="color:var(--text-muted);font-size:13px;">${r.notes || '-'}</td>
+                <td><button class="action-btn" onclick="editOperatorRecord('${r.record_date}')" title="Edit"><i class="fas fa-edit"></i></button></td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Operator date filter event listeners
+$('operatorStartDate')?.addEventListener('change', () => loadOperatorDashboard());
+$('operatorEndDate')?.addEventListener('change', () => loadOperatorDashboard());
+
+// Operator Add Scan button
+$('operatorAddScanBtn')?.addEventListener('click', async () => {
+    const today = getTodayStr();
+    openOperatorScanModal(today);
+});
+
+// Reusable function to open scan modal (for add or edit)
+async function openOperatorScanModal(date) {
+    const formattedDate = formatDate(date);
+    const isToday = date === getTodayStr();
+
+    // Check if record exists for this date
+    let existingRecord = null;
+    try {
+        const records = await apiFetch(`/records?user_id=${currentUser.id}`);
+        existingRecord = records.find(r => r.record_date === date);
+    } catch (e) { }
+
+    const isEdit = existingRecord !== null;
+    const title = isEdit
+        ? `Edit Scan Count - ${formattedDate}`
+        : `Add Scan Count - ${formattedDate}`;
+
+    const existingCount = existingRecord?.scan_count || '';
+    const existingNotes = existingRecord?.notes || '';
+    const existingStatus = existingRecord?.status || 'present';
+
+    openModal(title, `
         <form id="operatorScanForm">
+            ${isEdit ? '<p style="color: var(--accent); margin-bottom: 15px; text-align: center;"><i class="fas fa-info-circle"></i> You already have a record for this date. Saving will update it.</p>' : ''}
             <div class="form-group">
+                <label><i class="fas fa-user-check"></i> Status</label>
+                <select id="opScanStatus" class="form-select" style="margin-bottom: 15px;">
+                    <option value="present" ${existingStatus === 'present' ? 'selected' : ''}>Present</option>
+                    <option value="absent" ${existingStatus === 'absent' ? 'selected' : ''}>Absent</option>
+                    <option value="leave" ${existingStatus === 'leave' ? 'selected' : ''}>Leave</option>
+                </select>
+            </div>
+            <div class="form-group" id="scanCountGroup">
                 <label><i class="fas fa-file-alt"></i> Number of Scans</label>
-                <input type="number" id="opScanCount" placeholder="Enter your scan count" min="0" required autofocus style="font-size: 24px; text-align: center; padding: 20px;">
+                <input type="number" id="opScanCount" placeholder="Enter your scan count" min="0" value="${existingCount}" style="font-size: 24px; text-align: center; padding: 20px;">
             </div>
             <div class="form-group">
                 <label><i class="fas fa-sticky-note"></i> Notes (optional)</label>
-                <input type="text" id="opScanNotes" placeholder="Any notes...">
+                <input type="text" id="opScanNotes" placeholder="Any notes..." value="${existingNotes}">
             </div>
             <button type="submit" class="btn btn-primary btn-full btn-lg">
-                <i class="fas fa-save"></i> Save My Scan Count
+                <i class="fas fa-save"></i> ${isEdit ? 'Update' : 'Save'} Record
             </button>
         </form>
     `);
 
+    // Toggle scan count field based on status
+    const statusSelect = $('opScanStatus');
+    const scanCountGroup = $('scanCountGroup');
+    statusSelect?.addEventListener('change', () => {
+        if (statusSelect.value === 'present') {
+            scanCountGroup.style.display = 'block';
+        } else {
+            scanCountGroup.style.display = 'none';
+        }
+    });
+    // Initial check
+    if (statusSelect?.value !== 'present') {
+        scanCountGroup.style.display = 'none';
+    }
+
     $('operatorScanForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const scanCount = parseInt($('opScanCount').value) || 0;
+        const status = $('opScanStatus').value;
+        const scanCount = status === 'present' ? (parseInt($('opScanCount').value) || 0) : null;
         const notes = $('opScanNotes').value;
 
         try {
@@ -459,20 +644,25 @@ $('operatorAddScanBtn')?.addEventListener('click', () => {
                 method: 'POST',
                 body: JSON.stringify({
                     user_id: currentUser.id,
-                    record_date: today,
+                    record_date: date,
                     scan_count: scanCount,
-                    status: 'present',
+                    status: status,
                     notes
                 })
             });
-            showToast('Scan count saved successfully!');
+            showToast(isEdit ? 'Record updated successfully!' : 'Record saved successfully!');
             closeModal();
             loadOperatorDashboard();
         } catch (err) {
             showToast('Failed to save: ' + err.message, 'error');
         }
     });
-});
+}
+
+// Global function for editing from history table
+window.editOperatorRecord = function(date) {
+    openOperatorScanModal(date);
+};
 
 // Load dashboard location filter
 async function loadDashboardLocationFilter() {
@@ -763,8 +953,10 @@ function renderTrackingTable(data) {
             cell.addEventListener('click', () => {
                 const userId = cell.dataset.user;
                 const date = cell.dataset.date;
-                const userName = users.find(u => u.user_id == userId)?.full_name || '';
-                openRecordModal(userId, date, userName);
+                const user = users.find(u => u.user_id == userId);
+                const userName = user?.full_name || '';
+                const existingRecord = user?.daily[date] || null;
+                openRecordModal(userId, date, userName, existingRecord);
             });
         });
     }
@@ -774,31 +966,37 @@ function canEditRecords() {
     return currentUser && ['super_admin', 'location_manager', 'scanner_operator', 'file_handler'].includes(currentUser.role);
 }
 
-function openRecordModal(userId, date, userName) {
+function openRecordModal(userId, date, userName, existingRecord = null) {
     // For operators, they can only edit their own
     if ((currentUser.role === 'scanner_operator' || currentUser.role === 'file_handler') && userId != currentUser.id) return;
 
     const formattedDate = formatDate(date);
-    openModal(`Record: ${userName} — ${formattedDate}`, `
+    const isEdit = existingRecord !== null;
+    const existingStatus = existingRecord?.status || 'present';
+    const existingScanCount = existingRecord?.scan_count || '';
+    const existingNotes = existingRecord?.notes || '';
+
+    openModal(`${isEdit ? 'Edit' : 'Add'} Record: ${userName} — ${formattedDate}`, `
     <form id="recordForm">
+      ${isEdit ? '<p style="color: var(--accent); margin-bottom: 15px; text-align: center;"><i class="fas fa-info-circle"></i> Editing existing record</p>' : ''}
       <div class="form-group">
         <label><i class="fas fa-clipboard-check"></i> Status</label>
-        <select id="recordStatus" class="form-select" >
-          <option value="present">Present (with scan count)</option>
-          <option value="absent">Absent</option>
-          <option value="file_close">File Close</option>
-          <option value="holiday">Holiday</option>
+        <select id="recordStatus" class="form-select">
+          <option value="present" ${existingStatus === 'present' ? 'selected' : ''}>Present (with scan count)</option>
+          <option value="absent" ${existingStatus === 'absent' ? 'selected' : ''}>Absent</option>
+          <option value="file_close" ${existingStatus === 'file_close' ? 'selected' : ''}>File Close</option>
+          <option value="holiday" ${existingStatus === 'holiday' ? 'selected' : ''}>Holiday</option>
         </select>
       </div>
-      <div class="form-group" id="scanCountGroup">
+      <div class="form-group" id="scanCountGroup" style="${existingStatus !== 'present' ? 'display:none;' : ''}">
         <label><i class="fas fa-file-alt"></i> Scan Count</label>
-        <input type="number" id="recordScanCount" placeholder="Enter number of scans" min="0">
+        <input type="number" id="recordScanCount" placeholder="Enter number of scans" min="0" value="${existingScanCount}">
       </div>
       <div class="form-group">
         <label><i class="fas fa-sticky-note"></i> Notes (optional)</label>
-        <input type="text" id="recordNotes" placeholder="Any notes...">
+        <input type="text" id="recordNotes" placeholder="Any notes..." value="${existingNotes}">
       </div>
-      <button type="submit" class="btn btn-primary btn-full"><i class="fas fa-save"></i> Save Record</button>
+      <button type="submit" class="btn btn-primary btn-full"><i class="fas fa-save"></i> ${isEdit ? 'Update' : 'Save'} Record</button>
     </form>
   `);
 
@@ -818,7 +1016,7 @@ function openRecordModal(userId, date, userName) {
                 method: 'POST',
                 body: JSON.stringify({ user_id: userId, record_date: date, scan_count, status, notes })
             });
-            showToast('Record saved successfully!');
+            showToast(isEdit ? 'Record updated successfully!' : 'Record saved successfully!');
             closeModal();
             loadTracking();
         } catch (err) {
@@ -1221,9 +1419,12 @@ $('addRecordBtn')?.addEventListener('click', async () => {
 // =================== LOCATIONS ===================
 
 async function loadLocations() {
+    // Show loading state
+    const container = $('locationsList');
+    if (container) container.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><p style="margin-top:10px;">Loading locations...</p></div>';
+
     try {
         const locations = await apiFetch('/locations');
-        const container = $('locationsList');
 
         if (locations.length === 0) {
             container.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
@@ -1368,6 +1569,10 @@ window.deleteLocation = async function (id, name) {
 let usersCache = [];
 
 async function loadEmployees() {
+    // Show loading state immediately
+    const loadingTbody = $('employeesList');
+    if (loadingTbody) loadingTbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading employees...</td></tr>';
+
     // Ensure location filter is populated first
     await ensureEmployeeLocationFilter();
 
@@ -1730,26 +1935,39 @@ async function loadExpenses() {
     }
     if (locId) params.append('location_id', locId);
 
+    // Show loading state
+    const loadingTbody = $('expensesList');
+    if (loadingTbody) loadingTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    if ($('expensesTotal')) $('expensesTotal').textContent = '...';
+
     try {
         const expenses = await apiFetch(`/expenses?${params.toString()}`);
         const tbody = $('expensesList');
         if (!tbody) return;
 
         if (expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;">No expenses found</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;">No expenses found</td></tr>`;
             if ($('expensesTotal')) $('expensesTotal').textContent = '₹0';
             return;
         }
         let total = 0;
         tbody.innerHTML = expenses.map(e => {
             total += parseFloat(e.amount);
+            const docBtn = e.document_url
+                ? `<a href="${e.document_url}" target="_blank" class="action-btn" title="View Document" style="background: var(--info);"><i class="fas fa-file-alt"></i></a>`
+                : '';
             return `
             <tr>
                 <td>${e.expense_date}</td>
                 <td>${e.location_name}</td>
                 <td>${e.description || '-'}</td>
+                <td>${e.paid_by || '-'}</td>
                 <td>₹${formatNumber(e.amount)}</td>
-                <td><button class="action-btn delete" onclick="deleteExpense(${e.id})"><i class="fas fa-trash"></i></button></td>
+                <td style="text-align:center;">${docBtn || '<span style="color:var(--text-muted);">-</span>'}</td>
+                <td>
+                    <button class="action-btn edit" onclick="editExpense(${e.id}, '${e.expense_date}', ${e.location_id}, ${e.amount}, '${(e.description || '').replace(/'/g, "\\'")}', '${e.document_url || ''}', '${(e.paid_by || '').replace(/'/g, "\\'")}')" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="action-btn delete" onclick="deleteExpense(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>
+                </td>
             </tr>`;
         }).join('');
         if ($('expensesTotal')) $('expensesTotal').textContent = '₹' + formatNumber(total);
@@ -1761,7 +1979,117 @@ window.deleteExpense = async (id) => {
     try {
         await apiFetch(`/expenses/${id}`, { method: 'DELETE' });
         loadExpenses();
+        showToast('Expense deleted');
     } catch (e) { showToast(e.message, 'error'); }
+};
+
+// Edit expense function
+window.editExpense = async (id, date, locationId, amount, description, documentUrl, paidBy) => {
+    try {
+        const locations = await apiFetch('/locations');
+        const locOptions = locations.map(l => `<option value="${l.id}" ${l.id == locationId ? 'selected' : ''}>${l.name}</option>`).join('');
+
+        openModal('Edit Expense', `
+        <form id="editExpenseForm">
+          <div class="form-group">
+            <label>Date</label>
+            <input type="date" id="editExpDate" required value="${date}">
+          </div>
+          <div class="form-group">
+            <label>Location / Project</label>
+            <select id="editExpLocation" class="form-select" required>
+                <option value="">Select Location</option>
+                ${locOptions}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Amount (₹)</label>
+            <input type="number" id="editExpAmount" step="0.01" required placeholder="0.00" value="${amount}">
+          </div>
+          <div class="form-group">
+            <label>Description</label>
+            <input type="text" id="editExpDesc" placeholder="e.g. Transport, Food, Stationary" value="${description}">
+          </div>
+          <div class="form-group">
+            <label>Paid By</label>
+            <input type="text" id="editExpPaidBy" placeholder="e.g. Harshal, Vijay sir, Company" value="${paidBy || ''}">
+          </div>
+          <div class="form-group">
+            <label>Document Proof (Optional)</label>
+            ${documentUrl ? `
+            <div id="currentDocPreview" style="margin-bottom: 10px; padding: 10px; background: var(--bg-secondary); border-radius: 8px; display: flex; align-items: center; justify-content: space-between;">
+                <a href="${documentUrl}" target="_blank" style="color: var(--primary);"><i class="fas fa-file-alt"></i> View Current Document</a>
+                <button type="button" id="removeDocBtn" class="btn btn-danger" style="padding: 4px 10px; font-size: 12px;"><i class="fas fa-times"></i> Remove</button>
+            </div>
+            ` : ''}
+            <input type="file" id="editExpDocument" accept="image/*,.pdf" style="padding: 8px;">
+            <small style="color: var(--text-muted); display: block; margin-top: 5px;">Max 5MB. Accepted: JPG, PNG, GIF, PDF</small>
+            <input type="hidden" id="editExpDocUrl" value="${documentUrl || ''}">
+          </div>
+          <button type="submit" class="btn btn-primary btn-full">Update Expense</button>
+        </form>
+      `);
+
+        // Remove document button
+        const removeBtn = $('removeDocBtn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', async () => {
+                if (confirm('Remove document from this expense?')) {
+                    try {
+                        await apiFetch(`/expenses/${id}/document`, { method: 'DELETE' });
+                        $('currentDocPreview').remove();
+                        $('editExpDocUrl').value = '';
+                        showToast('Document removed');
+                    } catch (e) { showToast(e.message, 'error'); }
+                }
+            });
+        }
+
+        $('editExpenseForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Updating...';
+
+            try {
+                let documentUrlToSave = $('editExpDocUrl').value;
+
+                // Upload new document if selected
+                const fileInput = $('editExpDocument');
+                if (fileInput.files.length > 0) {
+                    const formData = new FormData();
+                    formData.append('document', fileInput.files[0]);
+                    const uploadRes = await fetch('/api/expenses/upload', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${getToken()}` },
+                        body: formData
+                    });
+                    const uploadData = await uploadRes.json();
+                    if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+                    documentUrlToSave = uploadData.document_url;
+                }
+
+                await apiFetch(`/expenses/${id}`, {
+                    method: 'PUT',
+                    body: JSON.stringify({
+                        expense_date: $('editExpDate').value,
+                        location_id: $('editExpLocation').value,
+                        amount: $('editExpAmount').value,
+                        description: $('editExpDesc').value,
+                        paid_by: $('editExpPaidBy').value,
+                        document_url: documentUrlToSave
+                    })
+                });
+                showToast('Expense updated');
+                closeModal();
+                loadExpenses();
+            } catch (e) {
+                showToast(e.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Update Expense';
+            }
+        });
+    } catch (e) { showToast('Failed to load data: ' + e.message, 'error'); }
 };
 
 $('addExpenseBtn')?.addEventListener('click', async () => {
@@ -1790,26 +2118,62 @@ $('addExpenseBtn')?.addEventListener('click', async () => {
             <label>Description</label>
             <input type="text" id="expDesc" placeholder="e.g. Transport, Food, Stationary">
           </div>
+          <div class="form-group">
+            <label>Paid By</label>
+            <input type="text" id="expPaidBy" placeholder="e.g. Harshal, Vijay sir, Company">
+          </div>
+          <div class="form-group">
+            <label>Document Proof (Optional)</label>
+            <input type="file" id="expDocument" accept="image/*,.pdf" style="padding: 8px;">
+            <small style="color: var(--text-muted); display: block; margin-top: 5px;">Max 5MB. Accepted: JPG, PNG, GIF, PDF</small>
+          </div>
           <button type="submit" class="btn btn-primary btn-full">Add Expense</button>
         </form>
       `);
 
         $('expenseForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Adding...';
+
             try {
+                let documentUrl = null;
+
+                // Upload document if selected
+                const fileInput = $('expDocument');
+                if (fileInput.files.length > 0) {
+                    const formData = new FormData();
+                    formData.append('document', fileInput.files[0]);
+                    const uploadRes = await fetch('/api/expenses/upload', {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${getToken()}` },
+                        body: formData
+                    });
+                    const uploadData = await uploadRes.json();
+                    if (!uploadRes.ok) throw new Error(uploadData.error || 'Upload failed');
+                    documentUrl = uploadData.document_url;
+                }
+
                 await apiFetch('/expenses', {
                     method: 'POST',
                     body: JSON.stringify({
                         expense_date: $('expDate').value,
                         location_id: $('expLocation').value,
                         amount: $('expAmount').value,
-                        description: $('expDesc').value
+                        description: $('expDesc').value,
+                        paid_by: $('expPaidBy').value,
+                        document_url: documentUrl
                     })
                 });
                 showToast('Expense added');
                 closeModal();
                 loadExpenses();
-            } catch (e) { showToast(e.message, 'error'); }
+            } catch (e) {
+                showToast(e.message, 'error');
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = 'Add Expense';
+            }
         });
     } catch (e) { showToast('Failed to load locations: ' + e.message, 'error'); }
 });

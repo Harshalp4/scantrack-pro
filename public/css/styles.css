@@ -588,6 +588,8 @@ table {
   margin-left: var(--sidebar-width);
   min-height: 100vh;
   background: var(--gradient-bg);
+  overflow-x: hidden;
+  max-width: calc(100vw - var(--sidebar-width));
 }
 
 .top-bar {
@@ -691,6 +693,8 @@ table {
   display: none;
   padding: 28px;
   animation: fadeIn 0.3s ease;
+  overflow-x: hidden;
+  max-width: 100%;
 }
 
 .page.active {
@@ -1034,6 +1038,12 @@ table {
   gap: 16px;
 }
 
+.tracking-actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
 .month-picker {
   display: flex;
   align-items: center;
@@ -1058,9 +1068,11 @@ table {
 
 .tracking-table-wrapper {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   background: var(--bg-card);
+  max-width: 100%;
 }
 
 .tracking-table {
@@ -1665,6 +1677,7 @@ table {
 
   .main-content {
     margin-left: 0;
+    max-width: 100vw;
   }
 
   .mobile-sidebar-toggle {
@@ -1676,11 +1689,16 @@ table {
   }
 
   .page {
-    padding: 16px;
+    padding: 12px;
+    overflow-x: auto;
   }
 
   .top-bar {
-    padding: 0 16px;
+    padding: 0 12px;
+  }
+
+  .top-bar-right {
+    display: none;
   }
 
   .cards-grid {
@@ -1698,6 +1716,101 @@ table {
   .tracking-controls {
     flex-direction: column;
     align-items: stretch;
+    gap: 12px;
+  }
+
+  .tracking-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+  }
+
+  .tracking-actions .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .month-picker {
+    justify-content: center;
+  }
+
+  /* Table wrapper for horizontal scroll */
+  .table-card {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 600px;
+  }
+
+  .data-table th,
+  .data-table td {
+    padding: 10px 12px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  /* Filter group responsive */
+  .filter-group {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .date-range-filter {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+
+  .date-range-filter input[type="date"] {
+    flex: 1;
+    min-width: 120px;
+  }
+
+  .page-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .page-actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Bulk entry responsive */
+  .bulk-date-navigator {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-date-shortcuts {
+    margin-left: 0;
+    margin-top: 10px;
+    justify-content: center;
+  }
+
+  .bulk-entry-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .bulk-entry-summary {
+    justify-content: space-around;
+  }
+
+  #bulkSaveBtn {
+    width: 100%;
+  }
+
+  /* Location detail panel */
+  #locationDetailPanel .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+
+  /* Modal responsive */
+  .modal-content {
+    margin: 12px;
+    max-height: calc(100vh - 24px);
   }
 }
 
@@ -1709,6 +1822,65 @@ table {
   .login-card {
     margin: 16px;
     padding: 32px 24px;
+  }
+
+  .stat-card {
+    padding: 16px;
+  }
+
+  .stat-value {
+    font-size: 22px;
+  }
+
+  .stat-label {
+    font-size: 11px;
+  }
+
+  .stat-icon {
+    width: 42px;
+    height: 42px;
+    font-size: 18px;
+  }
+
+  /* Card header responsive */
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 14px 16px;
+  }
+
+  .card-body {
+    padding: 16px;
+  }
+
+  /* Buttons smaller on mobile */
+  .btn {
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+
+  .btn-lg {
+    padding: 12px 24px;
+    font-size: 14px;
+  }
+
+  /* Toast responsive */
+  .toast-container {
+    left: 12px;
+    right: 12px;
+    top: 12px;
+  }
+
+  .toast {
+    min-width: unset;
+    max-width: unset;
+    width: 100%;
+  }
+
+  /* Location detail panel on very small screens */
+  #locationDetailPanel .stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 

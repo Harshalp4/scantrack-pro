@@ -3,7 +3,115 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
+const { BlobServiceClient } = require('@azure/storage-blob');
 const { db, initDatabase } = require('./database');
+
+// Azure Blob Storage configuration
+const AZURE_STORAGE_CONNECTION_STRING = process.env.AZURE_STORAGE_CONNECTION_STRING;
+const AZURE_CONTAINER_NAME = 'scantrack-expenses';
+const { generateBlobSASQueryParameters, BlobSASPermissions, StorageSharedKeyCredential } = require('@azure/storage-blob');
+
+// Helper to parse connection string
+function parseConnectionString(connStr) {
+    const parts = {};
+    if (!connStr) return parts;
+    connStr.split(';').forEach(part => {
+        const [key, ...valueParts] = part.split('=');
+        if (key && valueParts.length) {
+            parts[key] = valueParts.join('=');
+        }
+    });
+    return parts;
+}
+
+// Initialize Azure Blob Service Client
+let blobServiceClient;
+let containerClient;
+let sharedKeyCredential;
+
+async function initAzureStorage() {
+    if (!AZURE_STORAGE_CONNECTION_STRING) {
+        console.log('⚠️  Azure Blob Storage not configured (set AZURE_STORAGE_CONNECTION_STRING env var)');
+        return;
+    }
+    try {
+        blobServiceClient = BlobServiceClient.fromConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+        containerClient = blobServiceClient.getContainerClient(AZURE_CONTAINER_NAME);
+
+        // Extract account name and key from connection string for SAS generation
+        const connParts = parseConnectionString(AZURE_STORAGE_CONNECTION_STRING);
+        const accountName = connParts.AccountName;
+        const accountKey = connParts.AccountKey;
+        sharedKeyCredential = new StorageSharedKeyCredential(accountName, accountKey);
+
+        // Create container if it doesn't exist (private - no public access)
+        await containerClient.createIfNotExists();
+        console.log('✅ Azure Blob Storage connected (Container: ' + AZURE_CONTAINER_NAME + ')');
+    } catch (err) {
+        console.error('❌ Azure Blob Storage connection failed:', err.message);
+    }
+}
+
+// Generate SAS URL for blob (valid for 1 year)
+function generateSasUrl(blobName) {
+    const blobClient = containerClient.getBlobClient(blobName);
+
+    const sasOptions = {
+        containerName: AZURE_CONTAINER_NAME,
+        blobName: blobName,
+        permissions: BlobSASPermissions.parse('r'), // Read only
+        startsOn: new Date(),
+        expiresOn: new Date(new Date().valueOf() + 365 * 24 * 60 * 60 * 1000), // 1 year
+    };
+
+    const sasToken = generateBlobSASQueryParameters(sasOptions, sharedKeyCredential).toString();
+    return `${blobClient.url}?${sasToken}`;
+}
+
+// Upload file to Azure Blob Storage
+async function uploadToAzure(fileBuffer, fileName, mimeType) {
+    const blockBlobClient = containerClient.getBlockBlobClient(fileName);
+    await blockBlobClient.uploadData(fileBuffer, {
+        blobHTTPHeaders: { blobContentType: mimeType }
+    });
+    // Return SAS URL for private container access
+    return generateSasUrl(fileName);
+}
+
+// Delete file from Azure Blob Storage
+async function deleteFromAzure(blobUrl) {
+    try {
+        // Extract blob name from URL (remove SAS token if present)
+        const urlWithoutSas = blobUrl.split('?')[0];
+        const urlParts = new URL(urlWithoutSas);
+        const pathParts = urlParts.pathname.split('/');
+        const blobName = pathParts[pathParts.length - 1];
+        const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+        await blockBlobClient.deleteIfExists();
+        return true;
+    } catch (err) {
+        console.error('Error deleting blob:', err.message);
+        return false;
+    }
+}
+
+// Configure multer to use memory storage (for Azure upload)
+const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = /jpeg|jpg|png|pdf|gif/;
+        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+        const mimetype = allowedTypes.test(file.mimetype);
+        if (extname && mimetype) {
+            cb(null, true);
+        } else {
+            cb(new Error('Only images (jpeg, jpg, png, gif) and PDF files are allowed'));
+        }
+    }
+});
 
 const app = express();
 const PORT = process.env.PORT || 3500;
@@ -84,7 +192,10 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticate, async (req, res) => {
     try {
-        const user = await db.prepare('SELECT u.id, u.username, u.full_name, u.role, u.location_id, u.scanner_id, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE u.id = ?').get(req.user.id);
+        const user = await db.prepare('SELECT u.id, u.username, u.full_name, u.role, u.location_id, u.scanner_id, u.salary_type, u.custom_rate, u.fixed_salary, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE u.id = ?').get(req.user.id);
+        // Get global scan rate for per_page employees
+        const scanRateSetting = await db.prepare("SELECT value FROM settings WHERE key = 'scan_rate'").get();
+        user.scan_rate = user.custom_rate || parseFloat(scanRateSetting?.value || 0.10);
         res.json(user);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -186,11 +297,11 @@ app.get('/api/expenses', authenticate, authorize('super_admin'), async (req, res
 
 app.post('/api/expenses', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        const { location_id, expense_date, amount, description } = req.body;
+        const { location_id, expense_date, amount, description, document_url, paid_by } = req.body;
         if (!location_id || !expense_date || !amount) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
-        const result = await db.prepare('INSERT INTO expenses (location_id, expense_date, amount, description) VALUES (?, ?, ?, ?)').run(location_id, expense_date, amount, description || '');
+        const result = await db.prepare('INSERT INTO expenses (location_id, expense_date, amount, description, document_url, paid_by) VALUES (?, ?, ?, ?, ?, ?)').run(location_id, expense_date, amount, description || '', document_url || null, paid_by || null);
         res.json({ id: result.lastInsertRowid, message: 'Expense added' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -199,8 +310,61 @@ app.post('/api/expenses', authenticate, authorize('super_admin'), async (req, re
 
 app.delete('/api/expenses/:id', authenticate, authorize('super_admin'), async (req, res) => {
     try {
+        // Get the expense to delete any associated document from Azure
+        const expense = await db.prepare('SELECT document_url FROM expenses WHERE id = ?').get(req.params.id);
+        if (expense?.document_url) {
+            await deleteFromAzure(expense.document_url);
+        }
         await db.prepare('DELETE FROM expenses WHERE id = ?').run(req.params.id);
         res.json({ message: 'Expense deleted' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Update expense
+app.put('/api/expenses/:id', authenticate, authorize('super_admin'), async (req, res) => {
+    try {
+        const { location_id, expense_date, amount, description, document_url, paid_by } = req.body;
+        if (!location_id || !expense_date || !amount) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+        await db.prepare('UPDATE expenses SET location_id = ?, expense_date = ?, amount = ?, description = ?, document_url = ?, paid_by = ? WHERE id = ?')
+            .run(location_id, expense_date, amount, description || '', document_url || null, paid_by || null, req.params.id);
+        res.json({ message: 'Expense updated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Upload expense document to Azure Blob Storage
+app.post('/api/expenses/upload', authenticate, authorize('super_admin'), upload.single('document'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'No file uploaded' });
+        }
+        // Generate unique filename
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(req.file.originalname);
+        const fileName = 'expense-' + uniqueSuffix + ext;
+
+        // Upload to Azure Blob Storage
+        const documentUrl = await uploadToAzure(req.file.buffer, fileName, req.file.mimetype);
+        res.json({ document_url: documentUrl, message: 'Document uploaded to Azure' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Delete expense document from Azure Blob Storage
+app.delete('/api/expenses/:id/document', authenticate, authorize('super_admin'), async (req, res) => {
+    try {
+        const expense = await db.prepare('SELECT document_url FROM expenses WHERE id = ?').get(req.params.id);
+        if (expense?.document_url) {
+            await deleteFromAzure(expense.document_url);
+            await db.prepare('UPDATE expenses SET document_url = NULL WHERE id = ?').run(req.params.id);
+        }
+        res.json({ message: 'Document deleted from Azure' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -893,6 +1057,7 @@ app.use((req, res, next) => {
 async function startServer() {
     try {
         await initDatabase();
+        await initAzureStorage();
         app.listen(PORT, () => {
             console.log(`\n🚀 Scanning Tracker running at http://localhost:${PORT}`);
             console.log(`📋 Default login: username = admin, password = admin123\n`);

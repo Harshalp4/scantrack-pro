@@ -124,33 +124,104 @@
 
         <!-- OPERATOR/HANDLER VIEW - Simple personal dashboard -->
         <div id="operatorDashboard" class="operator-only" style="display: none;">
-          <div class="card" style="max-width: 600px; margin: 0 auto;">
-            <div class="card-header">
-              <h3><i class="fas fa-user"></i> My Dashboard</h3>
+          <!-- Summary Cards - Row 1: Scans -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px;">
+            <div class="stat-card stat-gradient-1">
+              <div class="stat-icon"><i class="fas fa-file-alt"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myTotalScans">0</span>
+                <span class="stat-label">Total Scans (All Time)</span>
+              </div>
             </div>
-            <div class="card-body">
-              <div class="stats-grid" style="grid-template-columns: repeat(2, 1fr); margin-bottom: 20px;">
-                <div class="stat-card stat-gradient-1">
-                  <div class="stat-icon"><i class="fas fa-file-alt"></i></div>
-                  <div class="stat-info">
-                    <span class="stat-value" id="myTotalScans">0</span>
-                    <span class="stat-label">My Total Scans</span>
-                  </div>
-                </div>
-                <div class="stat-card stat-gradient-2">
-                  <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
-                  <div class="stat-info">
-                    <span class="stat-value" id="myTodayScans">0</span>
-                    <span class="stat-label">Today's Scans</span>
-                  </div>
-                </div>
+            <div class="stat-card stat-gradient-2">
+              <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myTodayScans">0</span>
+                <span class="stat-label">Today's Scans</span>
               </div>
-              <div style="text-align: center; padding: 20px;">
-                <p style="color: var(--text-muted); margin-bottom: 15px;">Add your daily scan count</p>
-                <button id="operatorAddScanBtn" class="btn btn-primary btn-lg">
-                  <i class="fas fa-plus"></i> Add Today's Scan Count
-                </button>
+            </div>
+            <div class="stat-card stat-gradient-3">
+              <div class="stat-icon"><i class="fas fa-filter"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myFilteredScans">0</span>
+                <span class="stat-label">Filtered Scans</span>
               </div>
+            </div>
+          </div>
+
+          <!-- Summary Cards - Row 2: Earnings -->
+          <div class="stats-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 24px;">
+            <div class="stat-card" style="background: linear-gradient(135deg, #059669 0%, #10b981 100%);">
+              <div class="stat-icon"><i class="fas fa-rupee-sign"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myTotalEarnings">₹0</span>
+                <span class="stat-label">Total Earnings (All Time)</span>
+              </div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #0891b2 0%, #06b6d4 100%);">
+              <div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myTodayEarnings">₹0</span>
+                <span class="stat-label">Today's Earnings</span>
+              </div>
+            </div>
+            <div class="stat-card" style="background: linear-gradient(135deg, #7c3aed 0%, #8b5cf6 100%);">
+              <div class="stat-icon"><i class="fas fa-wallet"></i></div>
+              <div class="stat-info">
+                <span class="stat-value" id="myFilteredEarnings">₹0</span>
+                <span class="stat-label">Filtered Earnings</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rate Info -->
+          <div style="text-align: center; margin-bottom: 16px; padding: 12px; background: var(--bg-card); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+            <span style="color: var(--text-muted);"><i class="fas fa-info-circle"></i> Your Rate: </span>
+            <strong id="myRateDisplay" style="color: var(--primary);">₹0.00 per scan</strong>
+          </div>
+
+          <!-- Add Scan Button -->
+          <div style="text-align: center; margin-bottom: 24px;">
+            <button id="operatorAddScanBtn" class="btn btn-primary btn-lg">
+              <i class="fas fa-plus"></i> Add Today's Scan Count
+            </button>
+          </div>
+
+          <!-- Date Filter & History -->
+          <div class="card">
+            <div class="card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+              <h3><i class="fas fa-history"></i> My Scan History</h3>
+              <div class="date-range-filter">
+                <label><i class="fas fa-calendar"></i> From:</label>
+                <input type="date" id="operatorStartDate" class="form-input">
+                <label><i class="fas fa-calendar"></i> To:</label>
+                <input type="date" id="operatorEndDate" class="form-input">
+              </div>
+            </div>
+            <div class="card-body" style="padding:0;">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Scans</th>
+                    <th>Earnings</th>
+                    <th>Notes</th>
+                    <th style="width:60px;">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="operatorHistoryBody">
+                  <tr><td colspan="6" style="text-align:center;padding:20px;">Loading...</td></tr>
+                </tbody>
+                <tfoot>
+                  <tr class="total-row">
+                    <td colspan="2" style="text-align:right;"><strong>Total:</strong></td>
+                    <td id="operatorHistoryTotal"><strong>0</strong></td>
+                    <td id="operatorHistoryEarningsTotal" style="color:#22c55e;"><strong>₹0</strong></td>
+                    <td colspan="2"></td>
+                  </tr>
+                </tfoot>
+              </table>
             </div>
           </div>
         </div>
@@ -292,10 +363,8 @@
             <button id="nextMonth" class="btn btn-icon"><i class="fas fa-chevron-right"></i></button>
           </div>
           <div class="tracking-actions">
-            <button id="bulkEntryBtn" class="btn btn-primary manager-only"><i class="fas fa-edit"></i> Bulk
-              Entry</button>
-            <button id="addRecordBtn" class="btn btn-secondary manager-only"><i class="fas fa-plus"></i> Single
-              Entry</button>
+            <button id="bulkEntryBtn" class="btn btn-primary manager-only"><i class="fas fa-edit"></i> Bulk Entry</button>
+            <button id="addRecordBtn" class="btn btn-secondary manager-only"><i class="fas fa-plus"></i> Single Entry</button>
           </div>
         </div>
 
@@ -423,14 +492,16 @@
                 <th>Date</th>
                 <th>Project / Location</th>
                 <th>Description</th>
+                <th>Paid By</th>
                 <th>Amount (₹)</th>
+                <th style="text-align:center;">Doc</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody id="expensesList"></tbody>
             <tfoot>
               <tr class="total-row">
-                <td colspan="3" style="text-align:right;">Total Expenses:</td>
+                <td colspan="5" style="text-align:right;">Total Expenses:</td>
                 <td id="expensesTotal">₹0</td>
                 <td></td>
               </tr>

@@ -137,10 +137,28 @@ async function initDatabase() {
             expense_date DATE NOT NULL,
             amount REAL NOT NULL,
             description TEXT,
+            document_url TEXT,
+            paid_by TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (location_id) REFERENCES locations(id)
         )
     `);
+
+    // Add document_url column if it doesn't exist (for existing databases)
+    try {
+        await db.exec(`ALTER TABLE expenses ADD COLUMN document_url TEXT`);
+        console.log('✅ Added document_url column to expenses table');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
+    // Add paid_by column if it doesn't exist (for existing databases)
+    try {
+        await db.exec(`ALTER TABLE expenses ADD COLUMN paid_by TEXT`);
+        console.log('✅ Added paid_by column to expenses table');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
 
     // Create indexes
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_records_date ON daily_records(record_date)`);
