@@ -263,7 +263,7 @@ app.post('/api/users', authenticate, authorize('super_admin', 'location_manager'
 
 app.put('/api/users/:id', authenticate, authorize('super_admin', 'location_manager'), async (req, res) => {
     try {
-        const { full_name, role, scanner_id, is_active, password } = req.body;
+        const { full_name, username, role, scanner_id, is_active, password } = req.body;
 
         if (req.user.role === 'location_manager') {
             const targetUser = await db.prepare('SELECT location_id FROM users WHERE id = ?').get(req.params.id);
@@ -280,9 +280,20 @@ app.put('/api/users/:id', authenticate, authorize('super_admin', 'location_manag
             await db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed, req.params.id);
         }
 
-        await db.prepare(`UPDATE users SET full_name = COALESCE(?, full_name), role = COALESCE(?, role), scanner_id = COALESCE(?, scanner_id), is_active = COALESCE(?, is_active), salary_type = COALESCE(?, salary_type), custom_rate = COALESCE(?, custom_rate), fixed_salary = COALESCE(?, fixed_salary) WHERE id = ?`).run(full_name, role, scanner_id, is_active, req.body.salary_type, req.body.custom_rate, req.body.fixed_salary, req.params.id);
+        // Check if username is being changed and if it's unique
+        if (username) {
+            const existingUser = await db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id);
+            if (existingUser) {
+                return res.status(400).json({ error: 'Username already exists' });
+            }
+        }
+
+        await db.prepare(`UPDATE users SET full_name = COALESCE(?, full_name), username = COALESCE(?, username), role = COALESCE(?, role), scanner_id = COALESCE(?, scanner_id), is_active = COALESCE(?, is_active), salary_type = COALESCE(?, salary_type), custom_rate = COALESCE(?, custom_rate), fixed_salary = COALESCE(?, fixed_salary) WHERE id = ?`).run(full_name, username, role, scanner_id, is_active, req.body.salary_type, req.body.custom_rate, req.body.fixed_salary, req.params.id);
         res.json({ message: 'User updated successfully' });
     } catch (err) {
+        if (err.message.includes('UNIQUE')) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
         res.status(500).json({ error: err.message });
     }
 });

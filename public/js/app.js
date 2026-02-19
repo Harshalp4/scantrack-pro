@@ -1529,15 +1529,21 @@ window.editEmployee = function (id) {
           <input type="text" id="editEmpName" value="${user.full_name}" required>
         </div>
         <div class="form-group">
+          <label><i class="fas fa-at"></i> Username</label>
+          <input type="text" id="editEmpUsername" value="${user.username}" required>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
           <label><i class="fas fa-user-tag"></i> Role</label>
-          <select id="editEmpRole" class="form-select" >
+          <select id="editEmpRole" class="form-select">
             ${roleOptions}
           </select>
         </div>
-      </div>
-      <div class="form-group">
-        <label><i class="fas fa-barcode"></i> Scanner ID (optional)</label>
-        <input type="text" id="editEmpScanner" value="${user.scanner_id || ''}" placeholder="e.g. Kodak i3400">
+        <div class="form-group">
+          <label><i class="fas fa-barcode"></i> Scanner ID (optional)</label>
+          <input type="text" id="editEmpScanner" value="${user.scanner_id || ''}" placeholder="e.g. Kodak i3400">
+        </div>
       </div>
       
       <!-- Salary Section -->
@@ -1591,6 +1597,7 @@ window.editEmployee = function (id) {
                 method: 'PUT',
                 body: JSON.stringify({
                     full_name: $('editEmpName').value,
+                    username: $('editEmpUsername').value,
                     role: $('editEmpRole').value,
                     scanner_id: $('editEmpScanner').value,
                     is_active: $('editEmpActive').checked ? 1 : 0,
