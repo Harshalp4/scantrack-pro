@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Database (important - don't commit production data)
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Backups
+backups/
+
+# Environment
+.env
+.env.local
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/
+.idea/

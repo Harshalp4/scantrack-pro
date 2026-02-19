@@ -1,0 +1,26 @@
+{
+  "name": "scantrack-pro",
+  "version": "1.0.0",
+  "description": "Document scanning operations management system",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "backup": "node backup.js create",
+    "backup:list": "node backup.js list",
+    "backup:restore": "node backup.js restore"
+  },
+  "keywords": ["scanning", "document-management", "tracking"],
+  "author": "Harshal",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.6.2",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3"
+  }
+}
