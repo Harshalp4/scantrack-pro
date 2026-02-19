@@ -492,8 +492,25 @@ async function loadDashboardLocationFilter() {
 
 // Show location detail panel
 async function showLocationDetail(locationId) {
+    // Show loading state immediately
+    $('locationDetailPanel').style.display = 'block';
+    $('locationDetailName').textContent = 'Loading...';
+    $('locDetailScans').textContent = '...';
+    $('locDetailRevenue').textContent = '...';
+    $('locDetailCost').textContent = '...';
+    $('locDetailExpenses').textContent = '...';
+    $('locDetailEmployees').innerHTML = '<tr><td colspan="4" style="text-align:center;padding:20px;"><i class="fas fa-spinner fa-spin"></i> Loading employees...</td></tr>';
+    $('locationDetailPanel').scrollIntoView({ behavior: 'smooth' });
+
     try {
-        const data = await apiFetch(`/dashboard/location/${locationId}`);
+        // Get date range from filters
+        const startDate = $('dashboardStartDate')?.value;
+        const endDate = $('dashboardEndDate')?.value;
+        let params = '';
+        if (startDate && endDate) {
+            params = `?start_date=${startDate}&end_date=${endDate}`;
+        }
+        const data = await apiFetch(`/dashboard/location/${locationId}${params}`);
         const { location, employees, summary } = data;
 
         // Update header

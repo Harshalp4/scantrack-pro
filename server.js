@@ -788,6 +788,7 @@ app.get('/api/dashboard/my-stats', authenticate, async (req, res) => {
 app.get('/api/dashboard/location/:id', authenticate, async (req, res) => {
     try {
         const locationId = req.params.id;
+        const { start_date, end_date } = req.query;
         const scanRateSetting = await db.prepare("SELECT value FROM settings WHERE key = 'scan_rate'").get();
         const globalRate = parseFloat(scanRateSetting?.value || 0.10);
 
@@ -796,12 +797,35 @@ app.get('/api/dashboard/location/:id', authenticate, async (req, res) => {
             return res.status(404).json({ error: 'Location not found' });
         }
 
+        // Get all employees at this location
         const employees = await db.prepare(`SELECT id, full_name, role, salary_type, custom_rate, fixed_salary FROM users WHERE location_id = ? AND is_active = 1 AND role != 'super_admin'`).all(locationId);
 
-        const employeeData = [];
-        for (const emp of employees) {
-            const records = await db.prepare(`SELECT scan_count, record_date FROM daily_records WHERE user_id = ? AND status = 'present'`).all(emp.id);
+        // Build date filter
+        let dateFilter = '';
+        const dateParams = [];
+        if (start_date && end_date) {
+            dateFilter = ' AND dr.record_date BETWEEN ? AND ?';
+            dateParams.push(start_date, end_date);
+        }
 
+        // Get all records for all employees in ONE query (optimized)
+        const allRecords = await db.prepare(`
+            SELECT dr.user_id, dr.scan_count, dr.record_date
+            FROM daily_records dr
+            JOIN users u ON dr.user_id = u.id
+            WHERE u.location_id = ? AND dr.status = 'present'${dateFilter}
+        `).all(locationId, ...dateParams);
+
+        // Group records by user_id for fast lookup
+        const recordsByUser = {};
+        allRecords.forEach(r => {
+            if (!recordsByUser[r.user_id]) recordsByUser[r.user_id] = [];
+            recordsByUser[r.user_id].push(r);
+        });
+
+        // Calculate employee data
+        const employeeData = employees.map(emp => {
+            const records = recordsByUser[emp.id] || [];
             let totalScans = 0;
             let earnings = 0;
 
@@ -818,16 +842,23 @@ app.get('/api/dashboard/location/:id', authenticate, async (req, res) => {
                 }
             });
 
-            employeeData.push({
+            return {
                 id: emp.id,
                 full_name: emp.full_name,
                 role: emp.role,
                 total_scans: totalScans,
                 earnings: Math.round(earnings)
-            });
-        }
+            };
+        });
 
-        const expensesResult = await db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE location_id = ?`).get(locationId);
+        // Get expenses with date filter
+        let expensesSql = `SELECT COALESCE(SUM(amount), 0) as total FROM expenses WHERE location_id = ?`;
+        const expensesParams = [locationId];
+        if (start_date && end_date) {
+            expensesSql += ' AND expense_date BETWEEN ? AND ?';
+            expensesParams.push(start_date, end_date);
+        }
+        const expensesResult = await db.prepare(expensesSql).get(...expensesParams);
         const expenses = expensesResult?.total || 0;
 
         const totalScans = employeeData.reduce((sum, e) => sum + e.total_scans, 0);
