@@ -36,6 +36,20 @@ function authorize(...roles) {
     };
 }
 
+// =================== HEALTH CHECK ===================
+
+app.get('/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.get('/', (req, res, next) => {
+    if (req.headers.accept && req.headers.accept.includes('text/html')) {
+        next(); // Let static files handle it
+    } else {
+        res.status(200).json({ status: 'ok', app: 'ScanTrack Pro' });
+    }
+});
+
 // =================== AUTH ROUTES ===================
 
 app.post('/api/auth/login', async (req, res) => {
@@ -274,6 +288,69 @@ app.delete('/api/users/:id', authenticate, authorize('super_admin', 'location_ma
         }
         await db.prepare('UPDATE users SET is_active = 0 WHERE id = ?').run(req.params.id);
         res.json({ message: 'User deactivated' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Reset password for a single user (admin only)
+app.post('/api/users/:id/reset-password', authenticate, authorize('super_admin', 'location_manager'), async (req, res) => {
+    try {
+        const { new_password } = req.body;
+        if (!new_password || new_password.length < 4) {
+            return res.status(400).json({ error: 'Password must be at least 4 characters' });
+        }
+
+        if (req.user.role === 'location_manager') {
+            const targetUser = await db.prepare('SELECT location_id FROM users WHERE id = ?').get(req.params.id);
+            if (!targetUser || targetUser.location_id !== req.user.location_id) {
+                return res.status(403).json({ error: 'You can only reset passwords for employees at your location' });
+            }
+        }
+
+        const hashed = bcrypt.hashSync(new_password, 10);
+        await db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hashed, req.params.id);
+        res.json({ message: 'Password reset successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Bulk reset passwords for multiple users
+app.post('/api/users/bulk-reset-password', authenticate, authorize('super_admin', 'location_manager'), async (req, res) => {
+    try {
+        const { user_ids, new_password, location_id } = req.body;
+
+        if (!new_password || new_password.length < 4) {
+            return res.status(400).json({ error: 'Password must be at least 4 characters' });
+        }
+
+        const hashed = bcrypt.hashSync(new_password, 10);
+        let count = 0;
+
+        // If location_id provided, reset all users at that location
+        if (location_id && !user_ids) {
+            const targetLocationId = req.user.role === 'super_admin' ? location_id : req.user.location_id;
+            const result = await db.prepare('UPDATE users SET password = ? WHERE location_id = ? AND role != ? AND is_active = 1').run(hashed, targetLocationId, 'super_admin');
+            count = result.changes;
+        }
+        // If specific user_ids provided
+        else if (Array.isArray(user_ids) && user_ids.length > 0) {
+            for (const userId of user_ids) {
+                if (req.user.role === 'location_manager') {
+                    const targetUser = await db.prepare('SELECT location_id FROM users WHERE id = ?').get(userId);
+                    if (!targetUser || targetUser.location_id !== req.user.location_id) {
+                        continue; // Skip users not in manager's location
+                    }
+                }
+                await db.prepare('UPDATE users SET password = ? WHERE id = ? AND role != ?').run(hashed, userId, 'super_admin');
+                count++;
+            }
+        } else {
+            return res.status(400).json({ error: 'Provide either user_ids array or location_id' });
+        }
+
+        res.json({ message: `Password reset for ${count} users` });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
