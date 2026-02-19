@@ -42,6 +42,15 @@ app.get('/health', (req, res) => {
     res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Self-ping to keep Render awake (runs every 14 minutes)
+if (process.env.RENDER_EXTERNAL_URL || process.env.RENDER) {
+    setInterval(() => {
+        const url = process.env.RENDER_EXTERNAL_URL || 'https://scantrack-pro.onrender.com';
+        fetch(`${url}/health`).catch(() => {});
+        console.log('🏓 Self-ping to stay awake');
+    }, 14 * 60 * 1000); // 14 minutes
+}
+
 app.get('/', (req, res, next) => {
     if (req.headers.accept && req.headers.accept.includes('text/html')) {
         next(); // Let static files handle it
