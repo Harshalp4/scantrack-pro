@@ -157,11 +157,16 @@
 
         <!-- ADMIN/MANAGER VIEW -->
         <div id="adminDashboard" class="manager-only">
-          <!-- Filter (Super Admin Only) -->
-          <div class="page-actions admin-only" style="margin-bottom: 20px;">
+          <!-- Filters -->
+          <div class="page-actions" style="margin-bottom: 20px;">
             <div class="filter-group">
-              <label style="color: var(--text-muted); margin-right: 10px;"><i class="fas fa-filter"></i> Filter:</label>
-              <select id="dashboardLocationFilter" class="form-select" style="min-width: 200px;">
+              <div class="date-range-filter">
+                <label><i class="fas fa-calendar"></i> From:</label>
+                <input type="date" id="dashboardStartDate" class="form-input">
+                <label><i class="fas fa-calendar"></i> To:</label>
+                <input type="date" id="dashboardEndDate" class="form-input">
+              </div>
+              <select id="dashboardLocationFilter" class="form-select admin-only" style="min-width: 180px;">
                 <option value="">All Locations</option>
               </select>
             </div>
@@ -397,15 +402,19 @@
 
       <!-- EXPENSES PAGE (Super Admin Only) -->
       <section id="pageExpenses" class="page admin-only">
-        <div class="page-header">
-          <h3><i class="fas fa-file-invoice-dollar"></i> Project Expenses</h3>
-          <div class="header-actions">
-            <input type="month" id="expensesMonthFilter" class="form-input" style="width:auto;">
-            <select id="expensesLocationFilter" class="form-select" style="width:auto;">
+        <div class="page-actions">
+          <div class="filter-group">
+            <div class="date-range-filter">
+              <label><i class="fas fa-calendar"></i> From:</label>
+              <input type="date" id="expensesStartDate" class="form-input">
+              <label><i class="fas fa-calendar"></i> To:</label>
+              <input type="date" id="expensesEndDate" class="form-input">
+            </div>
+            <select id="expensesLocationFilter" class="form-select">
               <option value="">All Locations</option>
             </select>
-            <button id="addExpenseBtn" class="btn btn-primary"><i class="fas fa-plus"></i> Add Expense</button>
           </div>
+          <button id="addExpenseBtn" class="btn btn-primary"><i class="fas fa-plus"></i> Add Expense</button>
         </div>
         <div class="table-card">
           <table class="data-table">
@@ -420,7 +429,7 @@
             </thead>
             <tbody id="expensesList"></tbody>
             <tfoot>
-              <tr style="background:var(--bg-secondary);font-weight:bold;">
+              <tr class="total-row">
                 <td colspan="3" style="text-align:right;">Total Expenses:</td>
                 <td id="expensesTotal">₹0</td>
                 <td></td>

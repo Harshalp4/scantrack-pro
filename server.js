@@ -164,7 +164,7 @@ app.delete('/api/locations/:id', authenticate, authorize('super_admin'), async (
 
 app.get('/api/expenses', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        const { location_id, month } = req.query;
+        const { location_id, start_date, end_date } = req.query;
         let sql = `SELECT e.*, l.name as location_name FROM expenses e JOIN locations l ON e.location_id = l.id WHERE 1=1`;
         const params = [];
 
@@ -172,9 +172,9 @@ app.get('/api/expenses', authenticate, authorize('super_admin'), async (req, res
             sql += ' AND e.location_id = ?';
             params.push(location_id);
         }
-        if (month) {
-            sql += " AND strftime('%Y-%m', e.expense_date) = ?";
-            params.push(month);
+        if (start_date && end_date) {
+            sql += ' AND e.expense_date BETWEEN ? AND ?';
+            params.push(start_date, end_date);
         }
         sql += ' ORDER BY e.expense_date DESC';
         const expenses = await db.prepare(sql).all(...params);
@@ -643,7 +643,7 @@ app.put('/api/settings', authenticate, authorize('super_admin'), async (req, res
 
 app.get('/api/dashboard/simple', authenticate, async (req, res) => {
     try {
-        const { location_id } = req.query;
+        const { location_id, start_date, end_date } = req.query;
         const scanRateSetting = await db.prepare("SELECT value FROM settings WHERE key = 'scan_rate'").get();
         const globalRate = parseFloat(scanRateSetting?.value || 0.10);
 
@@ -652,17 +652,33 @@ app.get('/api/dashboard/simple', authenticate, async (req, res) => {
             ? await db.prepare(locationsQuery + ' AND id = ?').all(location_id)
             : await db.prepare(locationsQuery).all();
 
+        // Build date filter for records
+        let recordsDateFilter = '';
+        const recordsParams = [];
+        if (start_date && end_date) {
+            recordsDateFilter = ' AND dr.record_date BETWEEN ? AND ?';
+            recordsParams.push(start_date, end_date);
+        }
+
         const allRecords = await db.prepare(`
             SELECT u.location_id, u.salary_type, u.fixed_salary, u.custom_rate, dr.scan_count, dr.record_date
             FROM daily_records dr
             JOIN users u ON dr.user_id = u.id
-            WHERE dr.status = 'present'
-        `).all();
+            WHERE dr.status = 'present'${recordsDateFilter}
+        `).all(...recordsParams);
+
+        // Build date filter for expenses
+        let expensesDateFilter = '';
+        const expensesParams = [];
+        if (start_date && end_date) {
+            expensesDateFilter = ' WHERE expense_date BETWEEN ? AND ?';
+            expensesParams.push(start_date, end_date);
+        }
 
         const expensesByLocation = await db.prepare(`
             SELECT location_id, COALESCE(SUM(amount), 0) as total_expenses
-            FROM expenses GROUP BY location_id
-        `).all();
+            FROM expenses${expensesDateFilter} GROUP BY location_id
+        `).all(...expensesParams);
         const expensesMap = {};
         expensesByLocation.forEach(e => expensesMap[e.location_id] = e.total_expenses);
 

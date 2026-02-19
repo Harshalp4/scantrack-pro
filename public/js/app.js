@@ -147,6 +147,9 @@ async function showApp() {
         weekday: 'short', day: '2-digit', month: 'short', year: 'numeric'
     });
 
+    // Initialize date filters with current month
+    initializeDateFilters();
+
     // Load initial data
     await loadLocationsFilter();
     navigateTo('dashboard');
@@ -318,15 +321,26 @@ async function loadDashboard() {
             await loadDashboardLocationFilter();
         }
 
-        // Get location filter - super_admin can filter, location_manager uses their own location
-        let params = '';
+        // Build query params with date range and location
+        const queryParams = new URLSearchParams();
+
+        // Location filter
         if (role === 'super_admin') {
             const filterLocId = $('dashboardLocationFilter')?.value || '';
-            params = filterLocId ? `?location_id=${filterLocId}` : '';
+            if (filterLocId) queryParams.append('location_id', filterLocId);
         } else if (role === 'location_manager') {
-            params = `?location_id=${currentUser.location_id}`;
+            queryParams.append('location_id', currentUser.location_id);
         }
 
+        // Date range filter
+        const startDate = $('dashboardStartDate')?.value;
+        const endDate = $('dashboardEndDate')?.value;
+        if (startDate && endDate) {
+            queryParams.append('start_date', startDate);
+            queryParams.append('end_date', endDate);
+        }
+
+        const params = queryParams.toString() ? `?${queryParams.toString()}` : '';
         const data = await apiFetch(`/dashboard/simple${params}`);
         const { locations, totals } = data;
 
@@ -520,8 +534,16 @@ $('closeLocationDetail')?.addEventListener('click', () => {
     $('locationDetailPanel').style.display = 'none';
 });
 
-// Dashboard location filter change
+// Dashboard filter changes
 $('dashboardLocationFilter')?.addEventListener('change', () => {
+    loadDashboard();
+});
+
+$('dashboardStartDate')?.addEventListener('change', () => {
+    loadDashboard();
+});
+
+$('dashboardEndDate')?.addEventListener('change', () => {
     loadDashboard();
 });
 
@@ -1681,10 +1703,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // =================== EXPENSES ===================
 
 async function loadExpenses() {
-    const month = $('expensesMonthFilter')?.value;
+    const startDate = $('expensesStartDate')?.value;
+    const endDate = $('expensesEndDate')?.value;
     const locId = $('expensesLocationFilter')?.value;
     const params = new URLSearchParams();
-    if (month) params.append('month', month);
+    if (startDate && endDate) {
+        params.append('start_date', startDate);
+        params.append('end_date', endDate);
+    }
     if (locId) params.append('location_id', locId);
 
     try {
@@ -1771,13 +1797,26 @@ $('addExpenseBtn')?.addEventListener('click', async () => {
     } catch (e) { showToast('Failed to load locations: ' + e.message, 'error'); }
 });
 
-$('expensesMonthFilter')?.addEventListener('change', loadExpenses);
+$('expensesStartDate')?.addEventListener('change', loadExpenses);
+$('expensesEndDate')?.addEventListener('change', loadExpenses);
 $('expensesLocationFilter')?.addEventListener('change', loadExpenses);
 
-// Initialize filters
-const todayDate = new Date();
-const monthFilter = $('expensesMonthFilter');
-if (monthFilter) monthFilter.value = todayDate.toISOString().slice(0, 7);
+// Initialize date filters with current month
+function initializeDateFilters() {
+    const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+    const formatDate = (d) => d.toISOString().split('T')[0];
+
+    // Dashboard date filters
+    if ($('dashboardStartDate')) $('dashboardStartDate').value = formatDate(firstDay);
+    if ($('dashboardEndDate')) $('dashboardEndDate').value = formatDate(lastDay);
+
+    // Expenses date filters
+    if ($('expensesStartDate')) $('expensesStartDate').value = formatDate(firstDay);
+    if ($('expensesEndDate')) $('expensesEndDate').value = formatDate(lastDay);
+}
 
 // Populate expenses location filter
 async function loadExpensesFilter() {
