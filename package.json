@@ -13,10 +13,15 @@
     "backup:list": "node backup.js list",
     "backup:restore": "node backup.js restore"
   },
-  "keywords": ["scanning", "document-management", "tracking"],
+  "keywords": [
+    "scanning",
+    "document-management",
+    "tracking"
+  ],
   "author": "Harshal",
   "license": "ISC",
   "dependencies": {
+    "@libsql/client": "^0.17.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.6.2",
     "cors": "^2.8.6",
