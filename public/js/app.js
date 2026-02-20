@@ -1709,10 +1709,36 @@ window.editLocation = function (id, name, address, rate, active) {
 };
 
 window.deleteLocation = async function (id, name) {
-    if (!confirm(`Are you sure you want to deactivate "${name}"?`)) return;
+    openModal('Delete Location', `
+        <div style="text-align:center;">
+            <i class="fas fa-exclamation-triangle" style="font-size:48px;color:var(--danger);margin-bottom:16px;"></i>
+            <h3 style="margin-bottom:8px;">Delete "${name}"?</h3>
+            <p style="color:var(--text-muted);margin-bottom:24px;">Choose how you want to delete this location:</p>
+
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <button class="btn btn-secondary btn-full" onclick="performDeleteLocation(${id}, false)">
+                    <i class="fas fa-eye-slash"></i> Deactivate Only
+                    <small style="display:block;font-weight:normal;opacity:0.7;margin-top:4px;">Hide location but keep all data</small>
+                </button>
+                <button class="btn btn-full" style="background:var(--danger);" onclick="performDeleteLocation(${id}, true)">
+                    <i class="fas fa-trash-alt"></i> Permanently Delete
+                    <small style="display:block;font-weight:normal;opacity:0.7;margin-top:4px;">Remove location entirely (cannot be undone)</small>
+                </button>
+            </div>
+
+            <button class="btn btn-full" style="margin-top:16px;background:var(--bg-input);" onclick="closeModal()">
+                <i class="fas fa-times"></i> Cancel
+            </button>
+        </div>
+    `);
+};
+
+window.performDeleteLocation = async function(id, permanent) {
     try {
-        await apiFetch(`/locations/${id}`, { method: 'DELETE' });
-        showToast('Location deactivated');
+        const url = permanent ? `/locations/${id}?permanent=true` : `/locations/${id}`;
+        await apiFetch(url, { method: 'DELETE' });
+        showToast(permanent ? 'Location permanently deleted' : 'Location deactivated');
+        closeModal();
         loadLocations();
         loadLocationsFilter();
     } catch (err) {

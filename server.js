@@ -265,8 +265,39 @@ app.put('/api/locations/:id', authenticate, authorize('super_admin'), async (req
 
 app.delete('/api/locations/:id', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        await db.prepare('UPDATE locations SET is_active = 0 WHERE id = ?').run(req.params.id);
-        res.json({ message: 'Location deactivated' });
+        const permanent = req.query.permanent === 'true';
+
+        if (permanent) {
+            // Check if location has any employees
+            const employees = await db.prepare('SELECT COUNT(*) as count FROM users WHERE location_id = ?').get(req.params.id);
+            if (employees.count > 0) {
+                return res.status(400).json({ error: `Cannot delete: ${employees.count} employee(s) are assigned to this location. Please reassign them first.` });
+            }
+
+            // Check if location has any expenses
+            const expenses = await db.prepare('SELECT COUNT(*) as count FROM expenses WHERE location_id = ?').get(req.params.id);
+            if (expenses.count > 0) {
+                return res.status(400).json({ error: `Cannot delete: ${expenses.count} expense(s) are recorded for this location. Please delete or reassign them first.` });
+            }
+
+            // Check if location has any daily records (via users)
+            const records = await db.prepare(`
+                SELECT COUNT(*) as count FROM daily_records dr
+                JOIN users u ON dr.user_id = u.id
+                WHERE u.location_id = ?
+            `).get(req.params.id);
+            if (records.count > 0) {
+                return res.status(400).json({ error: `Cannot delete: ${records.count} daily record(s) exist for employees at this location.` });
+            }
+
+            // Permanently delete
+            await db.prepare('DELETE FROM locations WHERE id = ?').run(req.params.id);
+            res.json({ message: 'Location permanently deleted' });
+        } else {
+            // Soft delete (deactivate)
+            await db.prepare('UPDATE locations SET is_active = 0 WHERE id = ?').run(req.params.id);
+            res.json({ message: 'Location deactivated' });
+        }
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
