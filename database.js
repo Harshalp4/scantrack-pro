@@ -160,6 +160,14 @@ async function initDatabase() {
         // Column already exists, ignore error
     }
 
+    // Add daily_target column to users if it doesn't exist
+    try {
+        await db.exec(`ALTER TABLE users ADD COLUMN daily_target INTEGER`);
+        console.log('✅ Added daily_target column to users table');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
     // Create indexes
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_records_date ON daily_records(record_date)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_records_user ON daily_records(user_id)`);

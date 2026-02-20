@@ -33,7 +33,7 @@ let sharedKeyCredential;
 
 async function initAzureStorage() {
     if (!AZURE_STORAGE_CONNECTION_STRING) {
-        console.log('⚠️  Azure Blob Storage not configured (set AZURE_STORAGE_CONNECTION_STRING env var)');
+        console.log('⚠️  Azure Blob Storage not configured');
         return;
     }
     try {
@@ -172,7 +172,8 @@ app.get('/', (req, res, next) => {
 app.post('/api/auth/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        const user = await db.prepare('SELECT u.*, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE u.username = ? AND u.is_active = 1').get(username);
+        // Username is case-insensitive, password remains case-sensitive
+        const user = await db.prepare('SELECT u.*, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE LOWER(u.username) = LOWER(?) AND u.is_active = 1').get(username);
         if (!user || !bcrypt.compareSync(password, user.password)) {
             return res.status(401).json({ error: 'Invalid credentials' });
         }
@@ -340,6 +341,9 @@ app.put('/api/expenses/:id', authenticate, authorize('super_admin'), async (req,
 // Upload expense document to Azure Blob Storage
 app.post('/api/expenses/upload', authenticate, authorize('super_admin'), upload.single('document'), async (req, res) => {
     try {
+        if (!containerClient) {
+            return res.status(503).json({ error: 'Azure storage not configured' });
+        }
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
@@ -350,7 +354,7 @@ app.post('/api/expenses/upload', authenticate, authorize('super_admin'), upload.
 
         // Upload to Azure Blob Storage
         const documentUrl = await uploadToAzure(req.file.buffer, fileName, req.file.mimetype);
-        res.json({ document_url: documentUrl, message: 'Document uploaded to Azure' });
+        res.json({ document_url: documentUrl, message: 'Document uploaded' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -364,7 +368,7 @@ app.delete('/api/expenses/:id/document', authenticate, authorize('super_admin'),
             await deleteFromAzure(expense.document_url);
             await db.prepare('UPDATE expenses SET document_url = NULL WHERE id = ?').run(req.params.id);
         }
-        res.json({ message: 'Document deleted from Azure' });
+        res.json({ message: 'Document deleted' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -402,7 +406,7 @@ app.get('/api/users', authenticate, async (req, res) => {
 });
 
 app.post('/api/users', authenticate, authorize('super_admin', 'location_manager'), async (req, res) => {
-    const { username, password, full_name, role, location_id, scanner_id } = req.body;
+    const { username, password, full_name, role, location_id, scanner_id, daily_target } = req.body;
     if (!username || !password || !full_name || !role) {
         return res.status(400).json({ error: 'All fields are required' });
     }
@@ -415,7 +419,7 @@ app.post('/api/users', authenticate, authorize('super_admin', 'location_manager'
 
     try {
         const hashed = bcrypt.hashSync(password, 10);
-        const result = await db.prepare('INSERT INTO users (username, password, full_name, role, location_id, scanner_id, salary_type, custom_rate, fixed_salary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(username, hashed, full_name, role, targetLocationId, scanner_id || null, req.body.salary_type || 'per_page', req.body.custom_rate || null, req.body.fixed_salary || null);
+        const result = await db.prepare('INSERT INTO users (username, password, full_name, role, location_id, scanner_id, salary_type, custom_rate, fixed_salary, daily_target) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(username, hashed, full_name, role, targetLocationId, scanner_id || null, req.body.salary_type || 'per_page', req.body.custom_rate || null, req.body.fixed_salary || null, daily_target || null);
         res.json({ id: result.lastInsertRowid, message: 'User created successfully' });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
@@ -427,7 +431,7 @@ app.post('/api/users', authenticate, authorize('super_admin', 'location_manager'
 
 app.put('/api/users/:id', authenticate, authorize('super_admin', 'location_manager'), async (req, res) => {
     try {
-        const { full_name, username, role, scanner_id, is_active, password } = req.body;
+        const { full_name, username, role, scanner_id, is_active, password, daily_target } = req.body;
 
         if (req.user.role === 'location_manager') {
             const targetUser = await db.prepare('SELECT location_id FROM users WHERE id = ?').get(req.params.id);
@@ -452,7 +456,7 @@ app.put('/api/users/:id', authenticate, authorize('super_admin', 'location_manag
             }
         }
 
-        await db.prepare(`UPDATE users SET full_name = COALESCE(?, full_name), username = COALESCE(?, username), role = COALESCE(?, role), scanner_id = COALESCE(?, scanner_id), is_active = COALESCE(?, is_active), salary_type = COALESCE(?, salary_type), custom_rate = COALESCE(?, custom_rate), fixed_salary = COALESCE(?, fixed_salary) WHERE id = ?`).run(full_name, username, role, scanner_id, is_active, req.body.salary_type, req.body.custom_rate, req.body.fixed_salary, req.params.id);
+        await db.prepare(`UPDATE users SET full_name = COALESCE(?, full_name), username = COALESCE(?, username), role = COALESCE(?, role), scanner_id = COALESCE(?, scanner_id), is_active = COALESCE(?, is_active), salary_type = COALESCE(?, salary_type), custom_rate = COALESCE(?, custom_rate), fixed_salary = COALESCE(?, fixed_salary), daily_target = COALESCE(?, daily_target) WHERE id = ?`).run(full_name, username, role, scanner_id, is_active, req.body.salary_type, req.body.custom_rate, req.body.fixed_salary, daily_target, req.params.id);
         res.json({ message: 'User updated successfully' });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
@@ -592,7 +596,7 @@ app.get('/api/records/monthly', authenticate, async (req, res) => {
         const daysInMonth = new Date(y, m, 0).getDate();
         const endDate = `${y}-${String(m).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
-        let usersQuery = 'SELECT u.id, u.full_name, u.role, u.scanner_id, u.location_id, u.salary_type, u.custom_rate, u.fixed_salary, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE u.is_active = 1 AND u.role != ?';
+        let usersQuery = 'SELECT u.id, u.full_name, u.role, u.scanner_id, u.location_id, u.salary_type, u.custom_rate, u.fixed_salary, u.daily_target, l.name as location_name FROM users u LEFT JOIN locations l ON u.location_id = l.id WHERE u.is_active = 1 AND u.role != ?';
         const usersParams = ['super_admin'];
 
         if (req.user.role === 'location_manager') {
@@ -652,6 +656,7 @@ app.get('/api/records/monthly', authenticate, async (req, res) => {
                 salary_type: user.salary_type,
                 custom_rate: user.custom_rate,
                 fixed_salary: user.fixed_salary,
+                daily_target: user.daily_target,
                 daily: dailyData
             };
         });

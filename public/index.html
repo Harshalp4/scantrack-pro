@@ -69,17 +69,11 @@
         <a href="#" class="nav-item manager-only" data-page="tracking" id="navTracking">
           <i class="fas fa-table"></i><span>Daily Tracking</span>
         </a>
-        <a href="#" class="nav-item admin-only" data-page="locations" id="navLocations">
-          <i class="fas fa-map-marker-alt"></i><span>Locations</span>
-        </a>
         <a href="#" class="nav-item admin-only" data-page="expenses" id="navExpenses">
           <i class="fas fa-file-invoice-dollar"></i><span>Expenses</span>
         </a>
         <a href="#" class="nav-item manager-only" data-page="employees" id="navEmployees">
           <i class="fas fa-users"></i><span>Employees</span>
-        </a>
-        <a href="#" class="nav-item admin-only" data-page="roles" id="navRoles">
-          <i class="fas fa-user-tag"></i><span>Roles</span>
         </a>
         <a href="#" class="nav-item admin-only" data-page="settings" id="navSettings">
           <i class="fas fa-cog"></i><span>Settings</span>
@@ -360,10 +354,15 @@
       <!-- DAILY TRACKING PAGE -->
       <section id="pageTracking" class="page">
         <div class="tracking-controls">
-          <div class="month-picker">
-            <button id="prevMonth" class="btn btn-icon"><i class="fas fa-chevron-left"></i></button>
-            <span id="currentMonthLabel" class="month-label">February 2026</span>
-            <button id="nextMonth" class="btn btn-icon"><i class="fas fa-chevron-right"></i></button>
+          <div class="view-toggle">
+            <button id="viewWeek" class="btn btn-toggle active"><i class="fas fa-calendar-week"></i> Week</button>
+            <button id="viewMonth" class="btn btn-toggle"><i class="fas fa-calendar-alt"></i> Month</button>
+          </div>
+          <div class="period-picker">
+            <button id="prevPeriod" class="btn btn-icon"><i class="fas fa-chevron-left"></i></button>
+            <span id="currentPeriodLabel" class="period-label">Feb 17 - 23, 2026</span>
+            <button id="nextPeriod" class="btn btn-icon"><i class="fas fa-chevron-right"></i></button>
+            <button id="todayBtn" class="btn btn-toggle" style="margin-left:8px;"><i class="fas fa-crosshairs"></i> Today</button>
           </div>
           <div class="tracking-actions">
             <button id="bulkEntryBtn" class="btn btn-primary manager-only"><i class="fas fa-edit"></i> Bulk Entry</button>
@@ -427,16 +426,9 @@
           <table id="trackingTable" class="tracking-table">
             <thead id="trackingHead"></thead>
             <tbody id="trackingBody"></tbody>
+            <tfoot id="trackingFoot"></tfoot>
           </table>
         </div>
-      </section>
-
-      <!-- LOCATIONS PAGE -->
-      <section id="pageLocations" class="page">
-        <div class="page-actions">
-          <button id="addLocationBtn" class="btn btn-primary"><i class="fas fa-plus"></i> Add Location</button>
-        </div>
-        <div class="cards-grid" id="locationsList"></div>
       </section>
 
       <!-- EMPLOYEES PAGE -->
@@ -464,6 +456,7 @@
                 <th>Role</th>
                 <th>Location</th>
                 <th>Scanner</th>
+                <th>Target</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -513,42 +506,59 @@
         </div>
       </section>
 
-      <!-- ROLES PAGE (Super Admin Only) -->
-      <section id="pageRoles" class="page admin-only">
-        <div class="page-actions">
-          <h3><i class="fas fa-user-tag"></i> Manage Roles</h3>
-          <button id="addRoleBtn" class="btn btn-primary"><i class="fas fa-plus"></i> Add Role</button>
-        </div>
-        <div class="table-card">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>Role ID</th>
-                <th>Display Name</th>
-                <th>Description</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="rolesList"></tbody>
-          </table>
-        </div>
-      </section>
-
       <!-- SETTINGS PAGE (Super Admin Only) -->
       <section id="pageSettings" class="page admin-only">
         <div class="page-header">
-          <h3><i class="fas fa-cog"></i> Application Settings</h3>
+          <h3><i class="fas fa-cog"></i> Settings</h3>
         </div>
-        <div class="card" style="max-width: 600px;">
-          <div class="form-group">
-            <label><i class="fas fa-money-bill-wave"></i> Per Page Scan Rate (₹)</label>
-            <div style="display: flex; gap: 10px;">
-              <input type="number" id="settingScanRate" step="0.01" min="0" class="form-input" style="flex:1;">
-              <button id="saveSettingsBtn" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+
+        <!-- General Settings -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <h4><i class="fas fa-sliders-h"></i> General</h4>
+          </div>
+          <div class="card" style="max-width: 600px;">
+            <div class="form-group">
+              <label><i class="fas fa-money-bill-wave"></i> Per Page Scan Rate (₹)</label>
+              <div style="display: flex; gap: 10px;">
+                <input type="number" id="settingScanRate" step="0.01" min="0" class="form-input" style="flex:1;">
+                <button id="saveSettingsBtn" class="btn btn-primary"><i class="fas fa-save"></i> Save</button>
+              </div>
+              <small class="text-muted">This rate is used to calculate daily earnings for all users.</small>
             </div>
-            <small class="text-muted">This rate is used to calculate daily earnings for all users.</small>
           </div>
         </div>
+
+        <!-- Locations Section -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <h4><i class="fas fa-map-marker-alt"></i> Locations / Projects</h4>
+            <button id="addLocationBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Location</button>
+          </div>
+          <div class="cards-grid" id="locationsList"></div>
+        </div>
+
+        <!-- Roles Section -->
+        <div class="settings-section">
+          <div class="settings-section-header">
+            <h4><i class="fas fa-user-tag"></i> Roles</h4>
+            <button id="addRoleBtn" class="btn btn-primary btn-sm"><i class="fas fa-plus"></i> Add Role</button>
+          </div>
+          <div class="table-card">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Role ID</th>
+                  <th>Display Name</th>
+                  <th>Description</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rolesList"></tbody>
+            </table>
+          </div>
+        </div>
+
       </section>
 
     </main>

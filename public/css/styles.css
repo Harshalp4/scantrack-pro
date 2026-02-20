@@ -1044,6 +1044,57 @@ table {
   flex-shrink: 0;
 }
 
+.view-toggle {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-input);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+}
+
+.btn-toggle {
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.btn-toggle:hover {
+  color: var(--text-primary);
+  background: var(--bg-card-hover);
+}
+
+.btn-toggle.active {
+  background: var(--gradient-primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.btn-toggle i {
+  margin-right: 6px;
+}
+
+.period-picker {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.period-label {
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 180px;
+  text-align: center;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
 .month-picker {
   display: flex;
   align-items: center;
@@ -1064,15 +1115,6 @@ table {
 .tracking-actions {
   display: flex;
   gap: 12px;
-}
-
-.tracking-table-wrapper {
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  background: var(--bg-card);
-  max-width: 100%;
 }
 
 .tracking-table {
@@ -1152,15 +1194,76 @@ table {
   background: var(--bg-card-hover);
 }
 
-.tracking-table tbody tr.total-row td {
-  background: rgba(99, 102, 241, 0.08);
+.tracking-table tfoot tr.total-row td {
+  background: rgba(99, 102, 241, 0.15);
   font-weight: 700;
   color: var(--primary-light);
   border-top: 2px solid var(--primary);
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
 }
 
-.tracking-table tbody tr.total-row td:first-child {
-  background: rgba(99, 102, 241, 0.08);
+.tracking-table tfoot tr.total-row td:first-child,
+.tracking-table tfoot tr.total-row td:nth-child(2) {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: rgba(99, 102, 241, 0.2);
+}
+
+.tracking-table tfoot tr.total-row td:nth-child(2) {
+  left: 120px;
+}
+
+.tracking-table-wrapper {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 250px);
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  max-width: 100%;
+}
+
+.target-cell {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.target-met {
+  color: var(--success) !important;
+}
+
+.target-missed {
+  color: var(--danger) !important;
+}
+
+.achieved-bar {
+  height: 3px;
+  background: var(--bg-input);
+  border-radius: 2px;
+  margin-top: 2px;
+  overflow: hidden;
+}
+
+.achieved-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.achieved-bar-fill.met {
+  background: var(--success);
+}
+
+.achieved-bar-fill.partial {
+  background: var(--warning);
+}
+
+.achieved-bar-fill.low {
+  background: var(--danger);
 }
 
 /* Cell status styles */
@@ -1654,6 +1757,53 @@ table {
     opacity: 0;
     transform: translateX(50px);
   }
+}
+
+/* ======================================
+   SETTINGS PAGE SECTIONS
+   ====================================== */
+
+.settings-section {
+  margin-bottom: 32px;
+}
+
+.settings-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.settings-section-header h4 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-section-header h4 i {
+  color: var(--primary);
+  font-size: 1rem;
+}
+
+#pageSettings .page-header {
+  margin-bottom: 24px;
+}
+
+#pageSettings .page-header h3 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#pageSettings .page-header h3 i {
+  color: var(--primary);
 }
 
 /* ======================================

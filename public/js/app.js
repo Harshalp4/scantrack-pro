@@ -6,6 +6,8 @@ const API_BASE = '/api';
 let currentUser = null;
 let currentMonth = new Date().getMonth() + 1;
 let currentYear = new Date().getFullYear();
+let trackingViewMode = 'week'; // 'week', 'month', or 'day'
+let currentWeekStart = getWeekStart(new Date()); // Start of current week
 
 // =================== UTILITY ===================
 
@@ -214,10 +216,8 @@ function navigateTo(page) {
     const titles = {
         dashboard: 'Dashboard',
         tracking: 'Daily Tracking',
-        locations: 'Manage Locations',
         expenses: 'Project Expenses',
         employees: 'Manage Employees',
-        roles: 'Manage Roles',
         settings: 'Settings'
     };
     $('pageTitle').textContent = titles[page] || 'Dashboard';
@@ -237,11 +237,9 @@ function navigateTo(page) {
     switch (page) {
         case 'dashboard': loadDashboard(); break;
         case 'tracking': loadTracking(); break;
-        case 'locations': loadLocations(); break;
         case 'expenses': loadExpenses(); break;
         case 'employees': loadEmployees(); break;
-        case 'roles': loadRoles(); break;
-        case 'settings': loadSettings(); break;
+        case 'settings': loadSettings(); loadLocations(); loadRoles(); break;
     }
 
     // Close mobile sidebar
@@ -824,34 +822,145 @@ function renderTopPerformers(performers) {
 
 // =================== DAILY TRACKING ===================
 
-function updateMonthLabel() {
-    const months = ['January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'];
-    $('currentMonthLabel').textContent = `${months[currentMonth - 1]} ${currentYear}`;
+// Get Monday of the week for a given date
+function getWeekStart(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday
+    return new Date(d.setDate(diff));
 }
 
-$('prevMonth')?.addEventListener('click', () => {
-    currentMonth--;
-    if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-    updateMonthLabel();
+function getWeekEnd(startDate) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + 6);
+    return d;
+}
+
+function formatPeriodLabel() {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fullMonths = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    if (trackingViewMode === 'day') {
+        const today = new Date();
+        return `Today - ${days[today.getDay()]}, ${months[today.getMonth()]} ${today.getDate()}, ${today.getFullYear()}`;
+    } else if (trackingViewMode === 'week') {
+        const start = currentWeekStart;
+        const end = getWeekEnd(start);
+        if (start.getMonth() === end.getMonth()) {
+            return `${months[start.getMonth()]} ${start.getDate()} - ${end.getDate()}, ${start.getFullYear()}`;
+        } else {
+            return `${months[start.getMonth()]} ${start.getDate()} - ${months[end.getMonth()]} ${end.getDate()}, ${end.getFullYear()}`;
+        }
+    } else {
+        return `${fullMonths[currentMonth - 1]} ${currentYear}`;
+    }
+}
+
+function updatePeriodLabel() {
+    $('currentPeriodLabel').textContent = formatPeriodLabel();
+}
+
+// View toggle buttons
+$('viewWeek')?.addEventListener('click', () => {
+    if (trackingViewMode === 'week') return;
+    trackingViewMode = 'week';
+    $('viewWeek').classList.add('active');
+    $('viewMonth').classList.remove('active');
+    $('todayBtn').classList.remove('active');
+    // Set week to current week
+    currentWeekStart = getWeekStart(new Date());
     loadTracking();
 });
 
-$('nextMonth')?.addEventListener('click', () => {
-    currentMonth++;
-    if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-    updateMonthLabel();
+$('viewMonth')?.addEventListener('click', () => {
+    if (trackingViewMode === 'month') return;
+    trackingViewMode = 'month';
+    $('viewMonth').classList.add('active');
+    $('viewWeek').classList.remove('active');
+    $('todayBtn').classList.remove('active');
+    // Set month to current month
+    currentMonth = new Date().getMonth() + 1;
+    currentYear = new Date().getFullYear();
+    loadTracking();
+});
+
+$('prevPeriod')?.addEventListener('click', () => {
+    if (trackingViewMode === 'day') {
+        // Switch back to week view when navigating from day view
+        trackingViewMode = 'week';
+        $('viewWeek').classList.add('active');
+        $('todayBtn').classList.remove('active');
+        currentWeekStart = getWeekStart(new Date());
+        currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+    } else if (trackingViewMode === 'week') {
+        currentWeekStart.setDate(currentWeekStart.getDate() - 7);
+    } else {
+        currentMonth--;
+        if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+    }
+    loadTracking();
+});
+
+$('nextPeriod')?.addEventListener('click', () => {
+    if (trackingViewMode === 'day') {
+        // Switch back to week view when navigating from day view
+        trackingViewMode = 'week';
+        $('viewWeek').classList.add('active');
+        $('todayBtn').classList.remove('active');
+        currentWeekStart = getWeekStart(new Date());
+        currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+    } else if (trackingViewMode === 'week') {
+        currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+    } else {
+        currentMonth++;
+        if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+    }
+    loadTracking();
+});
+
+$('todayBtn')?.addEventListener('click', () => {
+    trackingViewMode = 'day';
+    $('viewWeek').classList.remove('active');
+    $('viewMonth').classList.remove('active');
+    $('todayBtn').classList.add('active');
+    const today = new Date();
+    currentMonth = today.getMonth() + 1;
+    currentYear = today.getFullYear();
     loadTracking();
 });
 
 async function loadTracking() {
-    updateMonthLabel();
+    updatePeriodLabel();
     const locationId = getSelectedLocation();
-    let params = `?month=${currentMonth}&year=${currentYear}`;
+
+    // Always fetch the full month data (API works on month basis)
+    let fetchMonth, fetchYear;
+    if (trackingViewMode === 'week') {
+        fetchMonth = currentWeekStart.getMonth() + 1;
+        fetchYear = currentWeekStart.getFullYear();
+    } else {
+        fetchMonth = currentMonth;
+        fetchYear = currentYear;
+    }
+
+    let params = `?month=${fetchMonth}&year=${fetchYear}`;
     if (locationId) params += `&location_id=${locationId}`;
 
     try {
         const data = await apiFetch(`/records/monthly${params}`);
+
+        // Filter dates based on view mode
+        if (trackingViewMode === 'day') {
+            const todayStr = getTodayStr();
+            data.dates = data.dates.filter(d => d.date === todayStr);
+        } else if (trackingViewMode === 'week') {
+            const weekStart = formatLocalDate(currentWeekStart);
+            const weekEnd = formatLocalDate(getWeekEnd(currentWeekStart));
+            data.dates = data.dates.filter(d => d.date >= weekStart && d.date <= weekEnd);
+        }
+
         renderTrackingTable(data);
     } catch (err) {
         showToast('Failed to load tracking data: ' + err.message, 'error');
@@ -862,20 +971,24 @@ function renderTrackingTable(data) {
     const { dates, users } = data;
     const thead = $('trackingHead');
     const tbody = $('trackingBody');
+    const tfoot = $('trackingFoot');
 
-    // Header row 1: Day names
-    // Columns: Name, Scanner, ...Dates..., Total, Earnings
-    let headerRow1 = '<tr><th>Employee</th><th>Scanner</th>';
+    // Calculate period target (days * daily_target)
+    const numDays = dates.length;
+
+    // Header row: Name, ...Dates..., Target, Achieved, Earnings
+    let headerRow = '<tr><th>Employee</th>';
     data.dates.forEach(d => {
         const isSun = d.dayName === 'Sun';
-        headerRow1 += `<th class="${isSun ? 'day-sun' : ''}">${d.dayName}<br>${d.day}</th>`;
+        headerRow += `<th class="${isSun ? 'day-sun' : ''}">${d.dayName}<br>${d.day}</th>`;
     });
-    headerRow1 += '<th>Total</th><th>Earnings (₹)</th></tr>';
-    thead.innerHTML = headerRow1;
+    headerRow += '<th>Target</th><th>Achieved</th><th>Earnings (₹)</th></tr>';
+    thead.innerHTML = headerRow;
 
     if (data.users.length === 0) {
         tbody.innerHTML = `<tr><td colspan="${data.dates.length + 4}" style="text-align:center;padding:40px;color:var(--text-muted);">
       <i class="fas fa-inbox" style="font-size:32px;display:block;margin-bottom:12px;"></i>No employees found. Add employees first.</td></tr>`;
+        if (tfoot) tfoot.innerHTML = '';
         return;
     }
 
@@ -885,6 +998,8 @@ function renderTrackingTable(data) {
     const managers = data.users.filter(u => u.role === 'location_manager');
     const allGroups = [];
     let grandEarnings = 0;
+    let grandTarget = 0;
+    let grandAchieved = 0;
 
     if (scanners.length) allGroups.push({ label: '📠 Scanner Operators', users: scanners });
     if (handlers.length) allGroups.push({ label: '📁 File Handlers', users: handlers });
@@ -901,7 +1016,6 @@ function renderTrackingTable(data) {
             let userTotal = 0;
             bodyHTML += `<tr>`;
             bodyHTML += `<td>${user.full_name}</td>`;
-            bodyHTML += `<td>${user.scanner_id || '—'}</td>`;
 
             dates.forEach(d => {
                 const record = user.daily[d.date];
@@ -917,9 +1031,9 @@ function renderTrackingTable(data) {
                 } else if (record.status === 'absent') {
                     bodyHTML += `<td class="cell-absent ${isClickable}" data-user="${user.user_id}" data-date="${d.date}">AB</td>`;
                 } else if (record.status === 'file_close') {
-                    bodyHTML += `<td class="cell-fileclose ${isClickable}" data-user="${user.user_id}" data-date="${d.date}">File Close</td>`;
+                    bodyHTML += `<td class="cell-fileclose ${isClickable}" data-user="${user.user_id}" data-date="${d.date}">FC</td>`;
                 } else if (record.status === 'holiday') {
-                    bodyHTML += `<td class="cell-holiday ${isClickable}" data-user="${user.user_id}" data-date="${d.date}">Holiday</td>`;
+                    bodyHTML += `<td class="cell-holiday ${isClickable}" data-user="${user.user_id}" data-date="${d.date}">H</td>`;
                 } else {
                     const count = record.scan_count || 0;
                     userTotal += count;
@@ -928,8 +1042,27 @@ function renderTrackingTable(data) {
                 }
             });
 
-            // Total Column
-            bodyHTML += `<td style="font-weight:700;color:var(--primary-light);">${formatNumber(userTotal)}</td>`;
+            // Calculate target for the period (days * daily_target)
+            const userTarget = user.daily_target ? user.daily_target * numDays : 0;
+            grandTarget += userTarget;
+            grandAchieved += userTotal;
+
+            // Target Column with progress
+            if (userTarget > 0) {
+                const percent = Math.min(100, Math.round((userTotal / userTarget) * 100));
+                const barClass = percent >= 100 ? 'met' : percent >= 70 ? 'partial' : 'low';
+                const textClass = percent >= 100 ? 'target-met' : percent < 70 ? 'target-missed' : '';
+                bodyHTML += `<td class="target-cell ${textClass}">
+                    ${formatNumber(userTarget)}
+                    <div class="achieved-bar"><div class="achieved-bar-fill ${barClass}" style="width:${percent}%"></div></div>
+                </td>`;
+            } else {
+                bodyHTML += `<td class="target-cell">—</td>`;
+            }
+
+            // Achieved Column (was Total)
+            const achievedClass = userTarget > 0 && userTotal >= userTarget ? 'target-met' : userTarget > 0 && userTotal < userTarget * 0.7 ? 'target-missed' : '';
+            bodyHTML += `<td style="font-weight:700;" class="${achievedClass}">${formatNumber(userTotal)}</td>`;
 
             // Earnings Column
             let earnings = 0;
@@ -937,7 +1070,6 @@ function renderTrackingTable(data) {
                 const daysInMonth = new Date(data.year, data.month, 0).getDate();
                 const dailyRate = (user.fixed_salary || 0) / daysInMonth;
                 let presentDays = 0;
-                // Count days present from daily records
                 data.dates.forEach(d => {
                     const r = user.daily[d.date];
                     if (r && r.status === 'present') presentDays++;
@@ -949,26 +1081,27 @@ function renderTrackingTable(data) {
             }
 
             grandEarnings += earnings;
-            bodyHTML += `<td><strong>₹${formatNumber(earnings)}</strong>${user.salary_type === 'fixed' ? ' <small class="text-muted">(Fix)</small>' : ''}</td>`;
+            bodyHTML += `<td><strong>₹${formatNumber(earnings)}</strong>${user.salary_type === 'fixed' ? ' <small class="text-muted">(F)</small>' : ''}</td>`;
 
             bodyHTML += `</tr>`;
         });
     });
 
-    // Total row
-    let grandTotal = 0;
-    // grandEarnings already calculated above
+    tbody.innerHTML = bodyHTML;
 
-    bodyHTML += '<tr class="total-row"><td>TOTAL</td><td></td>';
+    // Total row in tfoot (sticky at bottom)
+    let footHTML = '<tr class="total-row"><td>TOTAL</td>';
     data.dates.forEach(d => {
         const val = dailyTotals[d.date] || 0;
-        grandTotal += val;
-        bodyHTML += `<td>${val ? formatNumber(val) : '—'}</td>`;
+        footHTML += `<td>${val ? formatNumber(val) : '—'}</td>`;
     });
-    bodyHTML += `<td>${formatNumber(grandTotal)}</td>`;
-    bodyHTML += `<td>₹${formatNumber(grandEarnings)}</td></tr>`;
+    footHTML += `<td>${grandTarget ? formatNumber(grandTarget) : '—'}</td>`;
+    footHTML += `<td>${formatNumber(grandAchieved)}</td>`;
+    footHTML += `<td>₹${formatNumber(grandEarnings)}</td></tr>`;
 
-    tbody.innerHTML = bodyHTML;
+    if (tfoot) {
+        tfoot.innerHTML = footHTML;
+    }
 
     // Add click handlers for editable cells
     if (canEditRecords()) {
@@ -1617,7 +1750,7 @@ async function loadEmployees() {
         const tbody = $('employeesList');
 
         if (users.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">
         <i class="fas fa-users" style="font-size:32px;display:block;margin-bottom:12px;"></i>No employees found</td></tr>`;
             return;
         }
@@ -1629,6 +1762,7 @@ async function loadEmployees() {
         <td><span class="role-badge ${u.role}">${getRoleName(u.role)}</span></td>
         <td>${u.location_name || '—'}</td>
         <td style="color:var(--accent)">${u.scanner_id || '—'}</td>
+        <td style="color:var(--success);font-weight:600;">${u.daily_target ? u.daily_target.toLocaleString() : '—'}</td>
         <td>
           <div class="action-btns">
             <button class="action-btn" onclick="editEmployee(${u.id})"><i class="fas fa-edit"></i></button>
@@ -1724,11 +1858,17 @@ $('addEmployeeBtn')?.addEventListener('click', async () => {
       </div>
       </div>
       ${locationsHTML}
-      <div class="form-group">
-        <label><i class="fas fa-barcode"></i> Scanner ID (optional)</label>
-        <input type="text" id="empScanner" placeholder="e.g. Kodak i3400, fi-7180">
+      <div class="form-row">
+        <div class="form-group">
+          <label><i class="fas fa-barcode"></i> Scanner ID (optional)</label>
+          <input type="text" id="empScanner" placeholder="e.g. Kodak i3400, fi-7180">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-bullseye"></i> Daily Target (pages)</label>
+          <input type="number" id="empDailyTarget" placeholder="e.g. 5000" min="0">
+        </div>
       </div>
-      
+
       <!-- Salary Section -->
       <div class="form-row">
           <div class="form-group">
@@ -1776,7 +1916,8 @@ $('addEmployeeBtn')?.addEventListener('click', async () => {
                     scanner_id: $('empScanner').value,
                     salary_type: $('empSalaryType').value,
                     custom_rate: $('empCustomRate').value || null,
-                    fixed_salary: $('empFixedSalary').value || null
+                    fixed_salary: $('empFixedSalary').value || null,
+                    daily_target: $('empDailyTarget').value || null
                 })
             });
             showToast('Employee created!');
@@ -1823,7 +1964,11 @@ window.editEmployee = function (id) {
           <input type="text" id="editEmpScanner" value="${user.scanner_id || ''}" placeholder="e.g. Kodak i3400">
         </div>
       </div>
-      
+      <div class="form-group">
+        <label><i class="fas fa-bullseye"></i> Daily Target (pages)</label>
+        <input type="number" id="editEmpDailyTarget" value="${user.daily_target || ''}" placeholder="e.g. 5000" min="0">
+      </div>
+
       <!-- Salary Section -->
       <div class="form-row">
           <div class="form-group">
@@ -1882,7 +2027,8 @@ window.editEmployee = function (id) {
                     password: $('editEmpPassword').value || null,
                     salary_type: $('editEmpSalaryType').value,
                     custom_rate: $('editEmpCustomRate').value || null,
-                    fixed_salary: $('editEmpFixedSalary').value || null
+                    fixed_salary: $('editEmpFixedSalary').value || null,
+                    daily_target: $('editEmpDailyTarget').value || null
                 })
             });
             showToast('Employee updated!');
