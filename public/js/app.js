@@ -1589,13 +1589,13 @@ async function loadLocations() {
         }
 
         container.innerHTML = locations.map(loc => `
-      <div class="location-card">
+      <div class="location-card" onclick="viewLocationDashboard(${loc.id}, '${loc.name.replace(/'/g, "\\'")}')">
         <div class="location-card-header">
           <div>
             <h4>${loc.name}</h4>
             <div class="location-address"><i class="fas fa-map-pin"></i> ${loc.address || 'No address'}</div>
           </div>
-          <div class="location-card-actions">
+          <div class="location-card-actions" onclick="event.stopPropagation()">
             <button class="action-btn" onclick="editLocation(${loc.id}, '${loc.name}', '${loc.address || ''}', ${loc.client_rate || 0}, ${loc.is_active})"><i class="fas fa-edit"></i></button>
             <button class="action-btn delete" onclick="deleteLocation(${loc.id}, '${loc.name}')"><i class="fas fa-trash"></i></button>
           </div>
@@ -1743,6 +1743,125 @@ window.performDeleteLocation = async function(id, permanent) {
         loadLocationsFilter();
     } catch (err) {
         showToast(err.message, 'error');
+    }
+};
+
+// =================== LOCATION DRAWER ===================
+
+function openLocationDrawer() {
+    const drawer = $('locationDrawer');
+    const overlay = $('locationDrawerOverlay');
+    if (drawer && overlay) {
+        drawer.classList.remove('hidden');
+        overlay.classList.remove('hidden');
+        setTimeout(() => {
+            drawer.classList.add('active');
+            overlay.classList.add('active');
+        }, 10);
+    }
+}
+
+function closeLocationDrawer() {
+    const drawer = $('locationDrawer');
+    const overlay = $('locationDrawerOverlay');
+    if (drawer && overlay) {
+        drawer.classList.remove('active');
+        overlay.classList.remove('active');
+        setTimeout(() => {
+            drawer.classList.add('hidden');
+            overlay.classList.add('hidden');
+        }, 300);
+    }
+}
+
+// Drawer close handlers
+$('drawerClose')?.addEventListener('click', closeLocationDrawer);
+$('locationDrawerOverlay')?.addEventListener('click', closeLocationDrawer);
+
+window.viewLocationDashboard = async function(locationId, locationName) {
+    $('drawerLocationName').textContent = locationName;
+    $('drawerBody').innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><p style="margin-top:12px;">Loading data...</p></div>';
+    openLocationDrawer();
+
+    try {
+        // Fetch location details, employees, and today's records in parallel
+        const today = new Date().toISOString().split('T')[0];
+        const [employees, records, expenses] = await Promise.all([
+            apiFetch(`/users?location_id=${locationId}`),
+            apiFetch(`/records?location_id=${locationId}&date=${today}`),
+            apiFetch(`/expenses?location_id=${locationId}`).catch(() => [])
+        ]);
+
+        // Calculate stats
+        const totalEmployees = employees.length;
+        const presentToday = records.filter(r => r.status === 'present').length;
+        const todayScans = records.reduce((sum, r) => sum + (r.scan_count || 0), 0);
+        const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+
+        // Build drawer content
+        $('drawerBody').innerHTML = `
+            <div class="drawer-section">
+                <div class="drawer-section-title">Today's Overview</div>
+                <div class="drawer-stats-grid">
+                    <div class="drawer-stat-card">
+                        <span class="drawer-stat-value">${presentToday}/${totalEmployees}</span>
+                        <span class="drawer-stat-label">Present Today</span>
+                    </div>
+                    <div class="drawer-stat-card">
+                        <span class="drawer-stat-value">${todayScans.toLocaleString()}</span>
+                        <span class="drawer-stat-label">Scans Today</span>
+                    </div>
+                    <div class="drawer-stat-card">
+                        <span class="drawer-stat-value">${totalEmployees}</span>
+                        <span class="drawer-stat-label">Total Employees</span>
+                    </div>
+                    <div class="drawer-stat-card">
+                        <span class="drawer-stat-value">${expenses.length}</span>
+                        <span class="drawer-stat-label">Expense Records</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="drawer-section">
+                <div class="drawer-section-title">Employees (${employees.length})</div>
+                <div class="drawer-employee-list">
+                    ${employees.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:20px;">No employees assigned</p>' :
+                    employees.slice(0, 10).map(emp => {
+                        const record = records.find(r => r.user_id === emp.id);
+                        const initials = emp.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                        return `
+                            <div class="drawer-employee-item">
+                                <div class="drawer-employee-info">
+                                    <div class="drawer-employee-avatar">${initials}</div>
+                                    <div>
+                                        <div class="drawer-employee-name">${emp.full_name}</div>
+                                        <div class="drawer-employee-role">${getRoleName(emp.role)}</div>
+                                    </div>
+                                </div>
+                                <div class="drawer-employee-stats">
+                                    <div class="drawer-employee-count" style="color:${record ? 'var(--success)' : 'var(--text-muted)'}">
+                                        ${record ? (record.scan_count || 0).toLocaleString() : '-'}
+                                    </div>
+                                    <div class="drawer-employee-count-label">${record ? 'scans today' : 'no record'}</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                    ${employees.length > 10 ? `<p style="text-align:center;color:var(--text-muted);padding:12px;">+${employees.length - 10} more employees</p>` : ''}
+                </div>
+            </div>
+
+            <div class="drawer-actions">
+                <button class="btn btn-primary" onclick="closeLocationDrawer(); navigateTo('tracking'); setTimeout(() => { if($('locationFilter')) $('locationFilter').value = '${locationId}'; loadRecords(); }, 100);">
+                    <i class="fas fa-table"></i> View Tracking
+                </button>
+                <button class="btn btn-secondary" onclick="closeLocationDrawer(); navigateTo('employees'); setTimeout(() => { if($('employeeLocationFilter')) { $('employeeLocationFilter').value = '${locationId}'; loadEmployees(); }}, 100);">
+                    <i class="fas fa-users"></i> View Employees
+                </button>
+            </div>
+        `;
+    } catch (err) {
+        $('drawerBody').innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-triangle" style="font-size:32px;"></i><p style="margin-top:12px;">Failed to load data: ${err.message}</p></div>`;
     }
 };
 
