@@ -308,7 +308,7 @@ app.delete('/api/locations/:id', authenticate, authorize('super_admin'), async (
 app.get('/api/expenses', authenticate, authorize('super_admin'), async (req, res) => {
     try {
         const { location_id, start_date, end_date } = req.query;
-        let sql = `SELECT e.*, l.name as location_name FROM expenses e JOIN locations l ON e.location_id = l.id WHERE 1=1`;
+        let sql = `SELECT e.*, l.name as location_name FROM expenses e LEFT JOIN locations l ON e.location_id = l.id WHERE 1=1`;
         const params = [];
 
         if (location_id) {
@@ -329,11 +329,11 @@ app.get('/api/expenses', authenticate, authorize('super_admin'), async (req, res
 
 app.post('/api/expenses', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        const { location_id, expense_date, amount, description, document_url, paid_by } = req.body;
-        if (!location_id || !expense_date || !amount) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        const { location_id, expense_date, amount, description, document_url, paid_by, paid_from } = req.body;
+        if (!expense_date || !amount) {
+            return res.status(400).json({ error: 'Date and amount are required' });
         }
-        const result = await db.prepare('INSERT INTO expenses (location_id, expense_date, amount, description, document_url, paid_by) VALUES (?, ?, ?, ?, ?, ?)').run(location_id, expense_date, amount, description || '', document_url || null, paid_by || null);
+        const result = await db.prepare('INSERT INTO expenses (location_id, expense_date, amount, description, document_url, paid_by, paid_from) VALUES (?, ?, ?, ?, ?, ?, ?)').run(location_id || null, expense_date, amount, description || '', document_url || null, paid_by || null, paid_from || null);
         res.json({ id: result.lastInsertRowid, message: 'Expense added' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -357,12 +357,12 @@ app.delete('/api/expenses/:id', authenticate, authorize('super_admin'), async (r
 // Update expense
 app.put('/api/expenses/:id', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        const { location_id, expense_date, amount, description, document_url, paid_by } = req.body;
-        if (!location_id || !expense_date || !amount) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        const { location_id, expense_date, amount, description, document_url, paid_by, paid_from } = req.body;
+        if (!expense_date || !amount) {
+            return res.status(400).json({ error: 'Date and amount are required' });
         }
-        await db.prepare('UPDATE expenses SET location_id = ?, expense_date = ?, amount = ?, description = ?, document_url = ?, paid_by = ? WHERE id = ?')
-            .run(location_id, expense_date, amount, description || '', document_url || null, paid_by || null, req.params.id);
+        await db.prepare('UPDATE expenses SET location_id = ?, expense_date = ?, amount = ?, description = ?, document_url = ?, paid_by = ?, paid_from = ? WHERE id = ?')
+            .run(location_id || null, expense_date, amount, description || '', document_url || null, paid_by || null, paid_from || null, req.params.id);
         res.json({ message: 'Expense updated' });
     } catch (err) {
         res.status(500).json({ error: err.message });

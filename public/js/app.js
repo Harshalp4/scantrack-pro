@@ -2273,13 +2273,14 @@ async function loadExpenses() {
             return `
             <tr>
                 <td>${e.expense_date}</td>
-                <td>${e.location_name}</td>
+                <td>${e.location_name || '<span style="color:var(--warning);">Not Set</span>'}</td>
                 <td>${e.description || '-'}</td>
                 <td>${e.paid_by || '-'}</td>
+                <td>${e.paid_from || '-'}</td>
                 <td>₹${formatNumber(e.amount)}</td>
                 <td style="text-align:center;">${docBtn || '<span style="color:var(--text-muted);">-</span>'}</td>
                 <td>
-                    <button class="action-btn edit" onclick="editExpense(${e.id}, '${e.expense_date}', ${e.location_id}, ${e.amount}, '${(e.description || '').replace(/'/g, "\\'")}', '${e.document_url || ''}', '${(e.paid_by || '').replace(/'/g, "\\'")}')" title="Edit"><i class="fas fa-edit"></i></button>
+                    <button class="action-btn edit" onclick="editExpense(${e.id}, '${e.expense_date}', ${e.location_id || 'null'}, ${e.amount}, '${(e.description || '').replace(/'/g, "\\'")}', '${e.document_url || ''}', '${(e.paid_by || '').replace(/'/g, "\\'")}', '${(e.paid_from || '').replace(/'/g, "\\'")}')" title="Edit"><i class="fas fa-edit"></i></button>
                     <button class="action-btn delete" onclick="deleteExpense(${e.id})" title="Delete"><i class="fas fa-trash"></i></button>
                 </td>
             </tr>`;
@@ -2298,7 +2299,7 @@ window.deleteExpense = async (id) => {
 };
 
 // Edit expense function
-window.editExpense = async (id, date, locationId, amount, description, documentUrl, paidBy) => {
+window.editExpense = async (id, date, locationId, amount, description, documentUrl, paidBy, paidFrom) => {
     try {
         const locations = await apiFetch('/locations');
         const locOptions = locations.map(l => `<option value="${l.id}" ${l.id == locationId ? 'selected' : ''}>${l.name}</option>`).join('');
@@ -2311,8 +2312,8 @@ window.editExpense = async (id, date, locationId, amount, description, documentU
           </div>
           <div class="form-group">
             <label>Location / Project</label>
-            <select id="editExpLocation" class="form-select" required>
-                <option value="">Select Location</option>
+            <select id="editExpLocation" class="form-select">
+                <option value="">-- Not Assigned --</option>
                 ${locOptions}
             </select>
           </div>
@@ -2321,12 +2322,16 @@ window.editExpense = async (id, date, locationId, amount, description, documentU
             <input type="number" id="editExpAmount" step="0.01" required placeholder="0.00" value="${amount}">
           </div>
           <div class="form-group">
-            <label>Description</label>
+            <label>Description / Reason</label>
             <input type="text" id="editExpDesc" placeholder="e.g. Transport, Food, Stationary" value="${description}">
           </div>
           <div class="form-group">
-            <label>Paid By</label>
-            <input type="text" id="editExpPaidBy" placeholder="e.g. Harshal, Vijay sir, Company" value="${paidBy || ''}">
+            <label>Paid To / Given To</label>
+            <input type="text" id="editExpPaidBy" placeholder="e.g. Vijay sir, Vendor name" value="${paidBy || ''}">
+          </div>
+          <div class="form-group">
+            <label>Paid From Account</label>
+            <input type="text" id="editExpPaidFrom" placeholder="e.g. HDFC, Cash, Harshal personal" value="${paidFrom || ''}">
           </div>
           <div class="form-group">
             <label>Document Proof (Optional)</label>
@@ -2387,10 +2392,11 @@ window.editExpense = async (id, date, locationId, amount, description, documentU
                     method: 'PUT',
                     body: JSON.stringify({
                         expense_date: $('editExpDate').value,
-                        location_id: $('editExpLocation').value,
+                        location_id: $('editExpLocation').value || null,
                         amount: $('editExpAmount').value,
                         description: $('editExpDesc').value,
                         paid_by: $('editExpPaidBy').value,
+                        paid_from: $('editExpPaidFrom').value,
                         document_url: documentUrlToSave
                     })
                 });
@@ -2419,8 +2425,8 @@ $('addExpenseBtn')?.addEventListener('click', async () => {
           </div>
           <div class="form-group">
             <label>Location / Project</label>
-            <select id="expLocation" class="form-select" required>
-                <option value="">Select Location</option>
+            <select id="expLocation" class="form-select">
+                <option value="">-- Not Assigned --</option>
                 ${locOptions}
             </select>
           </div>
@@ -2429,12 +2435,16 @@ $('addExpenseBtn')?.addEventListener('click', async () => {
             <input type="number" id="expAmount" step="0.01" required placeholder="0.00">
           </div>
           <div class="form-group">
-            <label>Description</label>
+            <label>Description / Reason</label>
             <input type="text" id="expDesc" placeholder="e.g. Transport, Food, Stationary">
           </div>
           <div class="form-group">
-            <label>Paid By</label>
-            <input type="text" id="expPaidBy" placeholder="e.g. Harshal, Vijay sir, Company">
+            <label>Paid To / Given To</label>
+            <input type="text" id="expPaidBy" placeholder="e.g. Vijay sir, Vendor name">
+          </div>
+          <div class="form-group">
+            <label>Paid From Account</label>
+            <input type="text" id="expPaidFrom" placeholder="e.g. HDFC, Cash, Harshal personal">
           </div>
           <div class="form-group">
             <label>Document Proof (Optional)</label>
@@ -2473,10 +2483,11 @@ $('addExpenseBtn')?.addEventListener('click', async () => {
                     method: 'POST',
                     body: JSON.stringify({
                         expense_date: $('expDate').value,
-                        location_id: $('expLocation').value,
+                        location_id: $('expLocation').value || null,
                         amount: $('expAmount').value,
                         description: $('expDesc').value,
                         paid_by: $('expPaidBy').value,
+                        paid_from: $('expPaidFrom').value,
                         document_url: documentUrl
                     })
                 });

@@ -130,6 +130,7 @@ async function initDatabase() {
         )
     `);
 
+    // Expenses table WITHOUT foreign key (allows flexible location management)
     await db.exec(`
         CREATE TABLE IF NOT EXISTS expenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,8 +140,8 @@ async function initDatabase() {
             description TEXT,
             document_url TEXT,
             paid_by TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (location_id) REFERENCES locations(id)
+            paid_from TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
 
@@ -156,6 +157,14 @@ async function initDatabase() {
     try {
         await db.exec(`ALTER TABLE expenses ADD COLUMN paid_by TEXT`);
         console.log('✅ Added paid_by column to expenses table');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
+    // Add paid_from column if it doesn't exist (for existing databases)
+    try {
+        await db.exec(`ALTER TABLE expenses ADD COLUMN paid_from TEXT`);
+        console.log('✅ Added paid_from column to expenses table');
     } catch (e) {
         // Column already exists, ignore error
     }
@@ -202,6 +211,20 @@ async function initDatabase() {
         const hashedPassword = bcrypt.hashSync('admin123', 10);
         await db.prepare(`INSERT INTO users (username, password, full_name, role) VALUES (?, ?, ?, ?)`).run('admin', hashedPassword, 'Super Admin', 'super_admin');
         console.log('✅ Default super admin created (username: admin, password: admin123)');
+    }
+
+    // Seed Beed and Admin locations if they don't exist
+    const seedLocations = [
+        { name: 'Beed', address: 'Beed, Maharashtra' },
+        { name: 'Admin', address: 'General/Administrative expenses' }
+    ];
+    for (const loc of seedLocations) {
+        try {
+            await db.prepare('INSERT INTO locations (name, address, client_rate, is_active) VALUES (?, ?, 0, 1)').run(loc.name, loc.address);
+            console.log(`✅ Created location: ${loc.name}`);
+        } catch (e) {
+            // Location already exists, ignore
+        }
     }
 
     console.log('✅ Turso database connected and initialized');
