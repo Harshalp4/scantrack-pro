@@ -218,6 +218,7 @@ function navigateTo(page) {
         tracking: 'Daily Tracking',
         expenses: 'Project Expenses',
         employees: 'Manage Employees',
+        projects: 'Projects',
         settings: 'Settings'
     };
     $('pageTitle').textContent = titles[page] || 'Dashboard';
@@ -236,9 +237,10 @@ function navigateTo(page) {
     // Load page data
     switch (page) {
         case 'dashboard': loadDashboard(); break;
-        case 'tracking': loadTracking(); break;
+        case 'tracking': populateTrackingEmployeeFilter(); loadTracking(); break;
         case 'expenses': loadExpenses(); break;
         case 'employees': loadEmployees(); break;
+        case 'projects': loadProjects(); break;
         case 'settings': loadSettings(); loadLocations(); loadRoles(); break;
     }
 
@@ -339,6 +341,7 @@ async function loadDashboard() {
 
         // Show loading state
         $('totalScansAll').textContent = '...';
+        if ($('totalDocCountAll')) $('totalDocCountAll').textContent = '...';
         $('totalRevenueAll').textContent = '...';
         $('totalLabourAll').textContent = '...';
         $('totalExpensesAll').textContent = '...';
@@ -375,6 +378,7 @@ async function loadDashboard() {
 
         // Update summary cards
         $('totalScansAll').textContent = formatNumber(totals.total_scans);
+        if ($('totalDocCountAll')) $('totalDocCountAll').textContent = formatNumber(totals.total_doc_count || 0);
         $('totalRevenueAll').textContent = '₹' + formatNumber(totals.total_revenue);
         $('totalLabourAll').textContent = '₹' + formatNumber(totals.total_employee_cost);
         $('totalExpensesAll').textContent = '₹' + formatNumber(totals.total_expenses);
@@ -391,7 +395,7 @@ async function loadDashboard() {
             tfoot.innerHTML = '';
         } else {
             tbody.innerHTML = locations.map(loc => `
-                <tr class="location-row" data-location-id="${loc.location_id}" style="cursor: pointer;">
+                <tr class="location-row" data-location-id="${loc.location_id}" data-location-name="${loc.location_name.replace(/"/g, '&quot;')}" style="cursor: pointer;">
                     <td><strong>${loc.location_name}</strong> <i class="fas fa-chevron-right" style="font-size:10px;color:var(--text-muted);margin-left:5px;"></i></td>
                     <td>₹${loc.client_rate}</td>
                     <td>${formatNumber(loc.total_scans)}</td>
@@ -412,11 +416,12 @@ async function loadDashboard() {
                 </tr>
             `;
 
-            // Add click handlers for location rows
+            // Add click handlers for location rows - open XXL side panel
             tbody.querySelectorAll('.location-row').forEach(row => {
                 row.addEventListener('click', () => {
                     const locId = row.dataset.locationId;
-                    showLocationDetail(locId);
+                    const locName = row.dataset.locationName;
+                    openDashboardLocationDrawer(locId, locName);
                 });
             });
         }
@@ -931,6 +936,38 @@ $('todayBtn')?.addEventListener('click', () => {
     loadTracking();
 });
 
+// Employee filter for tracking page
+$('trackingEmployeeFilter')?.addEventListener('change', () => {
+    loadTracking();
+});
+
+// Populate employee filter dropdown
+async function populateTrackingEmployeeFilter() {
+    const select = $('trackingEmployeeFilter');
+    if (!select) return;
+
+    try {
+        const locationId = getSelectedLocation();
+        let url = '/users';
+        if (locationId) url += '?location_id=' + locationId;
+        const users = await apiFetch(url);
+
+        // Keep "All Employees" option
+        select.innerHTML = '<option value="">All Employees</option>';
+
+        // Add employees (excluding super_admin)
+        const employees = users.filter(u => u.role !== 'super_admin');
+        employees.forEach(emp => {
+            const opt = document.createElement('option');
+            opt.value = emp.id;
+            opt.textContent = emp.full_name + ' (' + (emp.role === 'scanner_operator' ? 'Scanner' : emp.role === 'file_handler' ? 'Handler' : 'Manager') + ')';
+            select.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Failed to populate employee filter:', err);
+    }
+}
+
 async function loadTracking() {
     updatePeriodLabel();
     const locationId = getSelectedLocation();
@@ -968,10 +1005,17 @@ async function loadTracking() {
 }
 
 function renderTrackingTable(data) {
-    const { dates, users } = data;
+    const { dates } = data;
+    let { users } = data;
     const thead = $('trackingHead');
     const tbody = $('trackingBody');
     const tfoot = $('trackingFoot');
+
+    // Filter by selected employee if any
+    const selectedEmployee = $('trackingEmployeeFilter')?.value;
+    if (selectedEmployee) {
+        users = users.filter(u => u.user_id == selectedEmployee);
+    }
 
     // Calculate period target (days * daily_target)
     const numDays = dates.length;
@@ -1588,7 +1632,14 @@ async function loadLocations() {
             return;
         }
 
-        container.innerHTML = locations.map(loc => `
+        container.innerHTML = locations.map(loc => {
+            const approxDocs = loc.approx_doc_count || 0;
+            const clientRate = loc.client_rate || 0;
+            const totalScans = loc.total_scans || 0;
+            const expectedRevenue = approxDocs * clientRate;
+            const earnedRevenue = totalScans * clientRate;
+            const progressPercent = approxDocs > 0 ? Math.min(100, (totalScans / approxDocs * 100)).toFixed(1) : 0;
+            return `
       <div class="location-card" onclick="viewLocationDashboard(${loc.id}, '${loc.name.replace(/'/g, "\\'")}')">
         <div class="location-card-header">
           <div>
@@ -1596,7 +1647,7 @@ async function loadLocations() {
             <div class="location-address"><i class="fas fa-map-pin"></i> ${loc.address || 'No address'}</div>
           </div>
           <div class="location-card-actions" onclick="event.stopPropagation()">
-            <button class="action-btn" onclick="editLocation(${loc.id}, '${loc.name}', '${loc.address || ''}', ${loc.client_rate || 0}, ${loc.is_active})"><i class="fas fa-edit"></i></button>
+            <button class="action-btn" onclick="editLocation(${loc.id}, '${loc.name}', '${loc.address || ''}', ${clientRate}, ${loc.is_active}, ${approxDocs})"><i class="fas fa-edit"></i></button>
             <button class="action-btn delete" onclick="deleteLocation(${loc.id}, '${loc.name}')"><i class="fas fa-trash"></i></button>
           </div>
         </div>
@@ -1606,39 +1657,74 @@ async function loadLocations() {
             <span class="location-stat-label">Employees</span>
           </div>
           <div class="location-stat">
-            <span class="location-stat-value">₹${loc.client_rate || 0}</span>
-            <span class="location-stat-label">Client Rate</span>
+            <span class="location-stat-value" style="color:var(--primary);">${totalScans.toLocaleString()}</span>
+            <span class="location-stat-label">Scanned Till Date</span>
           </div>
           <div class="location-stat">
-            <span class="location-stat-value">${loc.is_active ? '✅' : '❌'}</span>
-            <span class="location-stat-label">Status</span>
+            <span class="location-stat-value">${approxDocs > 0 ? approxDocs.toLocaleString() : '-'}</span>
+            <span class="location-stat-label">Total Docs</span>
+          </div>
+          <div class="location-stat">
+            <span class="location-stat-value" style="color:var(--success);">₹${earnedRevenue.toLocaleString()}</span>
+            <span class="location-stat-label">Earned Revenue</span>
           </div>
         </div>
+        ${approxDocs > 0 ? `
+        <div class="location-card-progress">
+          <div class="progress-bar-mini">
+            <div class="progress-bar-mini-fill" style="width:${progressPercent}%;"></div>
+          </div>
+          <span class="progress-text">${progressPercent}% Complete</span>
+        </div>
+        ` : ''}
+        <div class="location-status-badge ${loc.is_active ? 'active' : 'inactive'}">${loc.is_active ? 'Active' : 'Inactive'}</div>
       </div>
-    `).join('');
+    `;
+        }).join('');
     } catch (err) {
         showToast('Failed to load locations: ' + err.message, 'error');
     }
 }
 
-$('addLocationBtn')?.addEventListener('click', () => {
-    openModal('Add New Location', `
+// Show add location modal function (used by Projects page and Settings page)
+window.showAddLocationModal = function() {
+    openModal('Add New Location/Project', `
     <form id="locationForm">
       <div class="form-group">
-        <label><i class="fas fa-building"></i> Location Name</label>
+        <label><i class="fas fa-building"></i> Location/Project Name</label>
         <input type="text" id="locName" placeholder="e.g. PALWAL" required>
       </div>
       <div class="form-group">
         <label><i class="fas fa-map-pin"></i> Address</label>
         <input type="text" id="locAddress" placeholder="Full address (optional)">
       </div>
-      <div class="form-group">
-        <label><i class="fas fa-rupee-sign"></i> Client Rate (per page)</label>
-        <input type="number" id="locRate" step="0.01" placeholder="0.00">
+      <div class="form-row">
+        <div class="form-group">
+          <label><i class="fas fa-rupee-sign"></i> Client Rate (per page)</label>
+          <input type="number" id="locRate" step="0.01" placeholder="0.00">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-file-alt"></i> Approx Document Count</label>
+          <input type="number" id="locDocCount" placeholder="e.g. 100000">
+        </div>
+      </div>
+      <div class="form-group" style="background:var(--bg-card);padding:12px;border-radius:8px;margin-top:8px;">
+        <label style="margin-bottom:4px;font-size:12px;color:var(--text-muted);">Expected Revenue (auto-calculated)</label>
+        <div id="expectedRevenuePreview" style="font-size:18px;font-weight:600;color:var(--success);">₹0</div>
       </div>
       <button type="submit" class="btn btn-primary btn-full"><i class="fas fa-plus"></i> Create Location</button>
     </form>
   `);
+
+    // Auto-calculate expected revenue
+    const calcRevenue = () => {
+        const rate = parseFloat($('locRate')?.value) || 0;
+        const docs = parseInt($('locDocCount')?.value) || 0;
+        const revenue = rate * docs;
+        $('expectedRevenuePreview').textContent = '₹' + revenue.toLocaleString();
+    };
+    $('locRate')?.addEventListener('input', calcRevenue);
+    $('locDocCount')?.addEventListener('input', calcRevenue);
 
     $('locationForm').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -1648,33 +1734,47 @@ $('addLocationBtn')?.addEventListener('click', () => {
                 body: JSON.stringify({
                     name: $('locName').value,
                     address: $('locAddress').value,
-                    client_rate: $('locRate').value
+                    client_rate: $('locRate').value,
+                    approx_doc_count: $('locDocCount').value || 0
                 })
             });
             showToast('Location created!');
             closeModal();
             loadLocations();
             loadLocationsFilter();
+            loadProjects(); // Also refresh projects page
         } catch (err) {
             showToast(err.message, 'error');
         }
     });
-});
+};
 
-window.editLocation = function (id, name, address, rate, active) {
-    openModal('Edit Location', `
+$('addLocationBtn')?.addEventListener('click', showAddLocationModal);
+
+window.editLocation = function (id, name, address, rate, active, approxDocs = 0) {
+    openModal('Edit Location/Project', `
     <form id="editLocForm">
       <div class="form-group">
-        <label><i class="fas fa-building"></i> Location Name</label>
+        <label><i class="fas fa-building"></i> Location/Project Name</label>
         <input type="text" id="editLocName" value="${name}" required>
       </div>
       <div class="form-group">
         <label><i class="fas fa-map-pin"></i> Address</label>
         <input type="text" id="editLocAddress" value="${address}">
       </div>
-      <div class="form-group">
-        <label><i class="fas fa-rupee-sign"></i> Client Rate (per page)</label>
-        <input type="number" id="editLocRate" step="0.01" value="${rate}">
+      <div class="form-row">
+        <div class="form-group">
+          <label><i class="fas fa-rupee-sign"></i> Client Rate (per page)</label>
+          <input type="number" id="editLocRate" step="0.01" value="${rate}">
+        </div>
+        <div class="form-group">
+          <label><i class="fas fa-file-alt"></i> Approx Document Count</label>
+          <input type="number" id="editLocDocCount" value="${approxDocs}">
+        </div>
+      </div>
+      <div class="form-group" style="background:var(--bg-card);padding:12px;border-radius:8px;margin-top:8px;">
+        <label style="margin-bottom:4px;font-size:12px;color:var(--text-muted);">Expected Revenue (auto-calculated)</label>
+        <div id="editExpectedRevenuePreview" style="font-size:18px;font-weight:600;color:var(--success);">₹${(rate * approxDocs).toLocaleString()}</div>
       </div>
       <div style="margin-top:20px;display:flex;justify-content:space-between;align-items:center;">
           <label style="display:flex;align-items:center;cursor:pointer;">
@@ -1686,6 +1786,15 @@ window.editLocation = function (id, name, address, rate, active) {
     </form>
   `);
 
+    // Auto-calculate expected revenue
+    const calcEditRevenue = () => {
+        const r = parseFloat($('editLocRate')?.value) || 0;
+        const d = parseInt($('editLocDocCount')?.value) || 0;
+        $('editExpectedRevenuePreview').textContent = '₹' + (r * d).toLocaleString();
+    };
+    $('editLocRate')?.addEventListener('input', calcEditRevenue);
+    $('editLocDocCount')?.addEventListener('input', calcEditRevenue);
+
     $('editLocForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         try {
@@ -1695,6 +1804,7 @@ window.editLocation = function (id, name, address, rate, active) {
                     name: $('editLocName').value,
                     address: $('editLocAddress').value,
                     client_rate: $('editLocRate').value,
+                    approx_doc_count: $('editLocDocCount').value || 0,
                     is_active: $('editLocActive').checked ? 1 : 0
                 })
             });
@@ -1770,36 +1880,69 @@ function closeLocationDrawer() {
         setTimeout(() => {
             drawer.classList.add('hidden');
             overlay.classList.add('hidden');
+            drawer.classList.remove('drawer-xxl'); // Remove XXL class when closing
         }, 300);
     }
 }
 
-// Drawer close handlers
-$('drawerClose')?.addEventListener('click', closeLocationDrawer);
-$('locationDrawerOverlay')?.addEventListener('click', closeLocationDrawer);
+// Open XXL drawer for main dashboard location view
+async function openDashboardLocationDrawer(locationId, locationName) {
+    const drawer = $('locationDrawer');
+    drawer.classList.add('drawer-xxl'); // Add XXL class for wider drawer
 
-window.viewLocationDashboard = async function(locationId, locationName) {
     $('drawerLocationName').textContent = locationName;
     $('drawerBody').innerHTML = '<div style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin" style="font-size:24px;"></i><p style="margin-top:12px;">Loading data...</p></div>';
     openLocationDrawer();
 
     try {
-        // Fetch location details, employees, and today's records in parallel
+        // Fetch location details with date range from dashboard filters
+        const startDate = $('dashboardStartDate')?.value;
+        const endDate = $('dashboardEndDate')?.value;
+        let params = '';
+        if (startDate && endDate) {
+            params = `?start_date=${startDate}&end_date=${endDate}`;
+        }
+
         const today = new Date().toISOString().split('T')[0];
-        const [employees, records, expenses] = await Promise.all([
+        const [employees, todayRecords, expenses, locationData] = await Promise.all([
             apiFetch(`/users?location_id=${locationId}`),
             apiFetch(`/records?location_id=${locationId}&date=${today}`),
-            apiFetch(`/expenses?location_id=${locationId}`).catch(() => [])
+            apiFetch(`/expenses?location_id=${locationId}`).catch(() => []),
+            apiFetch(`/dashboard/location/${locationId}${params}`)
         ]);
 
-        // Calculate stats
+        const { location, employees: empData, summary } = locationData;
+
+        // Calculate today's stats
         const totalEmployees = employees.length;
-        const presentToday = records.filter(r => r.status === 'present').length;
-        const todayScans = records.reduce((sum, r) => sum + (r.scan_count || 0), 0);
+        const presentToday = todayRecords.filter(r => r.status === 'present').length;
+        const todayScans = todayRecords.reduce((sum, r) => sum + (r.scan_count || 0), 0);
         const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
 
-        // Build drawer content
+        // Build XXL drawer content with more details
         $('drawerBody').innerHTML = `
+            <div class="drawer-section">
+                <div class="drawer-section-title">Financial Summary (${startDate && endDate ? startDate + ' to ' + endDate : 'All Time'})</div>
+                <div class="drawer-stats-grid" style="grid-template-columns: repeat(2, 1fr);">
+                    <div class="drawer-stat-card" style="background: linear-gradient(135deg, #22c55e20, #22c55e10);">
+                        <span class="drawer-stat-value" style="color: #22c55e; font-size: 24px;">₹${formatNumber(summary.revenue)}</span>
+                        <span class="drawer-stat-label">Our Earnings</span>
+                    </div>
+                    <div class="drawer-stat-card" style="background: linear-gradient(135deg, #3b82f620, #3b82f610);">
+                        <span class="drawer-stat-value" style="color: #3b82f6; font-size: 24px;">${formatNumber(summary.total_scans)}</span>
+                        <span class="drawer-stat-label">Total Scans @ ₹${location.client_rate}/image</span>
+                    </div>
+                    <div class="drawer-stat-card" style="background: linear-gradient(135deg, #f59e0b20, #f59e0b10);">
+                        <span class="drawer-stat-value" style="color: #f59e0b; font-size: 24px;">₹${formatNumber(summary.employee_cost)}</span>
+                        <span class="drawer-stat-label">Employee Cost</span>
+                    </div>
+                    <div class="drawer-stat-card" style="background: linear-gradient(135deg, #ef444420, #ef444410);">
+                        <span class="drawer-stat-value" style="color: #ef4444; font-size: 24px;">₹${formatNumber(summary.expenses)}</span>
+                        <span class="drawer-stat-label">Expenses (${expenses.length} records)</span>
+                    </div>
+                </div>
+            </div>
+
             <div class="drawer-section">
                 <div class="drawer-section-title">Today's Overview</div>
                 <div class="drawer-stats-grid">
@@ -1815,39 +1958,21 @@ window.viewLocationDashboard = async function(locationId, locationName) {
                         <span class="drawer-stat-value">${totalEmployees}</span>
                         <span class="drawer-stat-label">Total Employees</span>
                     </div>
-                    <div class="drawer-stat-card">
-                        <span class="drawer-stat-value">${expenses.length}</span>
-                        <span class="drawer-stat-label">Expense Records</span>
-                    </div>
                 </div>
             </div>
 
             <div class="drawer-section">
-                <div class="drawer-section-title">Employees (${employees.length})</div>
-                <div class="drawer-employee-list">
+                <div class="drawer-section-title">Employees Performance (${employees.length})</div>
+                <div class="drawer-employee-list" style="max-height: 300px; overflow-y: auto;">
                     ${employees.length === 0 ? '<p style="color:var(--text-muted);text-align:center;padding:20px;">No employees assigned</p>' :
-                    employees.slice(0, 10).map(emp => {
-                        const record = records.find(r => r.user_id === emp.id);
+                    employees.map(emp => {
+                        const empRecord = empData.find(e => e.user_id === emp.id);
+                        const todayRecord = todayRecords.find(r => r.user_id === emp.id);
                         const initials = emp.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-                        return `
-                            <div class="drawer-employee-item">
-                                <div class="drawer-employee-info">
-                                    <div class="drawer-employee-avatar">${initials}</div>
-                                    <div>
-                                        <div class="drawer-employee-name">${emp.full_name}</div>
-                                        <div class="drawer-employee-role">${getRoleName(emp.role)}</div>
-                                    </div>
-                                </div>
-                                <div class="drawer-employee-stats">
-                                    <div class="drawer-employee-count" style="color:${record ? 'var(--success)' : 'var(--text-muted)'}">
-                                        ${record ? (record.scan_count || 0).toLocaleString() : '-'}
-                                    </div>
-                                    <div class="drawer-employee-count-label">${record ? 'scans today' : 'no record'}</div>
-                                </div>
-                            </div>
-                        `;
+                        const totalScans = empRecord ? empRecord.total_scans : 0;
+                        const earnings = empRecord ? empRecord.earnings : 0;
+                        return '<div class="drawer-employee-item"><div class="drawer-employee-info"><div class="drawer-employee-avatar">' + initials + '</div><div><div class="drawer-employee-name">' + emp.full_name + '</div><div class="drawer-employee-role">' + getRoleName(emp.role) + '</div></div></div><div class="drawer-employee-stats" style="text-align: right;"><div style="display: flex; gap: 16px;"><div><div class="drawer-employee-count" style="color:' + (todayRecord ? 'var(--success)' : 'var(--text-muted)') + '">' + (todayRecord ? (todayRecord.scan_count || 0).toLocaleString() : '-') + '</div><div class="drawer-employee-count-label">today</div></div><div><div class="drawer-employee-count" style="color: var(--primary)">' + totalScans.toLocaleString() + '</div><div class="drawer-employee-count-label">total</div></div><div><div class="drawer-employee-count" style="color: #22c55e">₹' + formatNumber(earnings) + '</div><div class="drawer-employee-count-label">earned</div></div></div></div></div>';
                     }).join('')}
-                    ${employees.length > 10 ? `<p style="text-align:center;color:var(--text-muted);padding:12px;">+${employees.length - 10} more employees</p>` : ''}
                 </div>
             </div>
 
@@ -1861,9 +1986,343 @@ window.viewLocationDashboard = async function(locationId, locationName) {
             </div>
         `;
     } catch (err) {
-        $('drawerBody').innerHTML = `<div style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-triangle" style="font-size:32px;"></i><p style="margin-top:12px;">Failed to load data: ${err.message}</p></div>`;
+        $('drawerBody').innerHTML = '<div style="text-align:center;padding:40px;color:var(--danger);"><i class="fas fa-exclamation-triangle" style="font-size:32px;"></i><p style="margin-top:12px;">Failed to load data: ' + err.message + '</p></div>';
+    }
+}
+
+// Drawer close handlers
+$('drawerClose')?.addEventListener('click', closeLocationDrawer);
+$('locationDrawerOverlay')?.addEventListener('click', closeLocationDrawer);
+
+// =================== PROJECTS PAGE ===================
+
+async function loadProjects() {
+    const grid = $('projectsGrid');
+    if (!grid) return;
+
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:60px;"><i class="fas fa-spinner fa-spin" style="font-size:32px;color:var(--primary);"></i></div>';
+
+    try {
+        const locations = await apiFetch('/locations');
+
+        if (locations.length === 0) {
+            grid.innerHTML = `
+                <div style="grid-column:1/-1;text-align:center;padding:60px;">
+                    <i class="fas fa-folder-open" style="font-size:48px;color:var(--text-muted);margin-bottom:16px;display:block;"></i>
+                    <p style="color:var(--text-muted);margin-bottom:20px;">No projects yet</p>
+                    <button class="btn btn-primary" onclick="showAddLocationModal()">
+                        <i class="fas fa-plus"></i> Add First Project
+                    </button>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = locations.map(loc => {
+            const clientRate = loc.client_rate || 0;
+            const approxDocs = loc.approx_doc_count || 0;
+            const totalScans = loc.total_scans || 0;
+            const expectedRevenue = approxDocs * clientRate;
+            const earnedRevenue = totalScans * clientRate;
+            const progressPercent = approxDocs > 0 ? Math.min(100, (totalScans / approxDocs * 100)).toFixed(1) : 0;
+
+            return `
+                <div class="project-card" onclick="viewLocationDashboard(${loc.id}, '${loc.name.replace(/'/g, "\\'")}')">
+                    <div class="project-card-header">
+                        <div class="project-icon"><i class="fas fa-building"></i></div>
+                        <div class="project-info">
+                            <h4>${loc.name}</h4>
+                            <p>${loc.address || 'No address'}</p>
+                        </div>
+                        <span class="project-status ${loc.is_active ? 'active' : 'inactive'}">
+                            ${loc.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                    </div>
+                    <div class="project-stats">
+                        <div class="project-stat">
+                            <span class="project-stat-value">${loc.employee_count || 0}</span>
+                            <span class="project-stat-label">Employees</span>
+                        </div>
+                        <div class="project-stat">
+                            <span class="project-stat-value">${totalScans.toLocaleString()}</span>
+                            <span class="project-stat-label">Scanned</span>
+                        </div>
+                        <div class="project-stat">
+                            <span class="project-stat-value">₹${clientRate}</span>
+                            <span class="project-stat-label">Rate/Page</span>
+                        </div>
+                    </div>
+                    ${approxDocs > 0 ? `
+                        <div class="project-progress">
+                            <div class="project-progress-header">
+                                <span>Progress</span>
+                                <span>${progressPercent}%</span>
+                            </div>
+                            <div class="project-progress-bar">
+                                <div class="project-progress-fill" style="width:${progressPercent}%;"></div>
+                            </div>
+                        </div>
+                    ` : ''}
+                    <div class="project-footer">
+                        <div class="project-revenue">
+                            <span class="label">Expected</span>
+                            <span class="value">₹${expectedRevenue.toLocaleString()}</span>
+                        </div>
+                        <div class="project-revenue earned">
+                            <span class="label">Earned</span>
+                            <span class="value">₹${earnedRevenue.toLocaleString()}</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (err) {
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px;color:var(--danger);"><i class="fas fa-exclamation-triangle" style="font-size:32px;"></i><p style="margin-top:12px;">Failed to load projects: ${err.message}</p></div>`;
+    }
+}
+
+// Current location being viewed
+let currentLocationId = null;
+
+window.viewLocationDashboard = async function(locationId, locationName) {
+    currentLocationId = locationId;
+
+    // Open project side panel
+    const panel = $('projectPanel');
+    const overlay = $('projectPanelOverlay');
+
+    panel.classList.remove('hidden');
+    overlay.classList.remove('hidden');
+
+    // Trigger reflow for animation
+    panel.offsetHeight;
+
+    panel.classList.add('active');
+    overlay.classList.add('active');
+
+    // Set header info
+    $('projectPanelName').textContent = locationName;
+    $('projectPanelAddress').textContent = 'Loading...';
+
+    // Show loading state
+    $('projectPanelBody').innerHTML = '<div style="text-align:center;padding:60px;"><i class="fas fa-spinner fa-spin" style="font-size:32px;color:var(--primary);"></i><p style="margin-top:16px;color:var(--text-muted);">Loading project details...</p></div>';
+
+    try {
+        // Fetch location details, employees, records, and expenses in parallel
+        const today = new Date().toISOString().split('T')[0];
+        const [locationDetails, employees, records, expenses, allRecords] = await Promise.all([
+            apiFetch(`/locations`).then(locs => locs.find(l => l.id == locationId)),
+            apiFetch(`/users?location_id=${locationId}`),
+            apiFetch(`/records?location_id=${locationId}&date=${today}`),
+            apiFetch(`/expenses?location_id=${locationId}`).catch(() => []),
+            apiFetch(`/records?location_id=${locationId}`).catch(() => [])
+        ]);
+
+        // Update header with address
+        $('projectPanelAddress').textContent = locationDetails?.address || 'No address';
+
+        // Store location details for edit button
+        window.currentLocDetails = locationDetails;
+
+        // Calculate stats
+        const totalEmployees = employees.length;
+        const presentToday = records.filter(r => r.status === 'present').length;
+        const todayScans = records.reduce((sum, r) => sum + (r.scan_count || 0), 0);
+        const totalExpenses = expenses.reduce((sum, e) => sum + (e.amount || 0), 0);
+        const totalScans = allRecords.reduce((sum, r) => sum + (r.scan_count || 0), 0);
+
+        // Project financials
+        const approxDocs = locationDetails?.approx_doc_count || 0;
+        const clientRate = locationDetails?.client_rate || 0;
+        const expectedRevenue = approxDocs * clientRate;
+        const earnedRevenue = totalScans * clientRate;
+        const progressPercent = approxDocs > 0 ? Math.min(100, (totalScans / approxDocs * 100)).toFixed(1) : 0;
+        const profitLoss = earnedRevenue - totalExpenses;
+
+        // Build panel body content
+        let bodyHTML = '';
+
+        // Progress Section (if applicable)
+        if (approxDocs > 0) {
+            bodyHTML += `
+                <div class="pp-section">
+                    <div class="pp-section-title"><i class="fas fa-chart-line"></i> Project Progress</div>
+                    <div class="pp-progress">
+                        <div class="pp-progress-header">
+                            <span>Completion Status</span>
+                            <span class="pp-progress-percent">${progressPercent}%</span>
+                        </div>
+                        <div class="pp-progress-bar">
+                            <div class="pp-progress-fill" style="width:${progressPercent}%;"></div>
+                        </div>
+                        <div class="pp-progress-footer">
+                            <span>${totalScans.toLocaleString()} scanned</span>
+                            <span>${Math.max(0, approxDocs - totalScans).toLocaleString()} remaining</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Financials Section
+        bodyHTML += `
+            <div class="pp-section">
+                <div class="pp-section-title"><i class="fas fa-rupee-sign"></i> Financials</div>
+                <div class="pp-financials">
+                    <div class="pp-fin-card pp-fin-primary">
+                        <div class="pp-fin-icon"><i class="fas fa-bullseye"></i></div>
+                        <div class="pp-fin-content">
+                            <div class="pp-fin-label">Expected Revenue</div>
+                            <div class="pp-fin-value">₹${expectedRevenue.toLocaleString()}</div>
+                            <div class="pp-fin-sub">${approxDocs.toLocaleString()} docs × ₹${clientRate}/page</div>
+                        </div>
+                    </div>
+                    <div class="pp-fin-card pp-fin-success">
+                        <div class="pp-fin-icon"><i class="fas fa-check-circle"></i></div>
+                        <div class="pp-fin-content">
+                            <div class="pp-fin-label">Earned So Far</div>
+                            <div class="pp-fin-value">₹${earnedRevenue.toLocaleString()}</div>
+                            <div class="pp-fin-sub">${totalScans.toLocaleString()} scans completed</div>
+                        </div>
+                    </div>
+                    <div class="pp-fin-card pp-fin-danger">
+                        <div class="pp-fin-icon"><i class="fas fa-receipt"></i></div>
+                        <div class="pp-fin-content">
+                            <div class="pp-fin-label">Total Expenses</div>
+                            <div class="pp-fin-value">₹${totalExpenses.toLocaleString()}</div>
+                            <div class="pp-fin-sub">${expenses.length} expense records</div>
+                        </div>
+                    </div>
+                    <div class="pp-fin-card ${profitLoss >= 0 ? 'pp-fin-success' : 'pp-fin-danger'}">
+                        <div class="pp-fin-icon"><i class="fas fa-${profitLoss >= 0 ? 'arrow-up' : 'arrow-down'}"></i></div>
+                        <div class="pp-fin-content">
+                            <div class="pp-fin-label">Net Profit/Loss</div>
+                            <div class="pp-fin-value">${profitLoss >= 0 ? '+' : ''}₹${profitLoss.toLocaleString()}</div>
+                            <div class="pp-fin-sub">Revenue - Expenses</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Today's Overview Section
+        bodyHTML += `
+            <div class="pp-section">
+                <div class="pp-section-title"><i class="fas fa-calendar-day"></i> Today's Overview</div>
+                <div class="pp-today-grid">
+                    <div class="pp-today-card">
+                        <div class="pp-today-value">${presentToday}/${totalEmployees}</div>
+                        <div class="pp-today-label">Present</div>
+                    </div>
+                    <div class="pp-today-card">
+                        <div class="pp-today-value">${todayScans.toLocaleString()}</div>
+                        <div class="pp-today-label">Scans Today</div>
+                    </div>
+                    <div class="pp-today-card">
+                        <div class="pp-today-value">${totalEmployees}</div>
+                        <div class="pp-today-label">Employees</div>
+                    </div>
+                    <div class="pp-today-card">
+                        <div class="pp-today-value">${totalScans.toLocaleString()}</div>
+                        <div class="pp-today-label">Total Scans</div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Employees Section
+        bodyHTML += `
+            <div class="pp-section">
+                <div class="pp-section-title"><i class="fas fa-users"></i> Team Members (${totalEmployees})</div>
+                <div class="pp-employees">
+        `;
+
+        if (employees.length === 0) {
+            bodyHTML += '<p style="color:var(--text-muted);text-align:center;padding:20px;">No employees assigned</p>';
+        } else {
+            bodyHTML += employees.map(emp => {
+                const record = records.find(r => r.user_id === emp.id);
+                const initials = emp.full_name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+                const statusClass = record ? (record.status === 'present' ? 'present' : 'absent') : 'no-entry';
+                return `
+                    <div class="pp-emp-card">
+                        <div class="pp-emp-avatar">${initials}</div>
+                        <div class="pp-emp-info">
+                            <div class="pp-emp-name">${emp.full_name}</div>
+                            <div class="pp-emp-role">${getRoleName(emp.role)}</div>
+                        </div>
+                        <div class="pp-emp-stats">
+                            <div class="pp-emp-scans ${statusClass}">${record ? (record.scan_count || 0).toLocaleString() : '-'}</div>
+                            <div class="pp-emp-label">${record ? 'today' : 'no entry'}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        bodyHTML += `
+                </div>
+            </div>
+        `;
+
+        // Actions Section
+        bodyHTML += `
+            <div class="pp-section pp-actions">
+                <button class="btn btn-secondary" onclick="closeProjectPanel(); navigateTo('tracking');">
+                    <i class="fas fa-clipboard-list"></i> Daily Tracking
+                </button>
+                <button class="btn btn-secondary" onclick="closeProjectPanel(); navigateTo('expenses');">
+                    <i class="fas fa-receipt"></i> View Expenses
+                </button>
+                <button class="btn btn-primary" onclick="editLocationFromPanel(${locationId})">
+                    <i class="fas fa-edit"></i> Edit Project
+                </button>
+            </div>
+        `;
+
+        $('projectPanelBody').innerHTML = bodyHTML;
+
+    } catch (err) {
+        $('projectPanelBody').innerHTML = `<div style="text-align:center;padding:60px;color:var(--danger);"><i class="fas fa-exclamation-triangle" style="font-size:32px;"></i><p style="margin-top:12px;">Failed to load data: ${err.message}</p></div>`;
     }
 };
+
+// Close project panel function
+window.closeProjectPanel = function() {
+    const panel = $('projectPanel');
+    const overlay = $('projectPanelOverlay');
+
+    panel.classList.remove('active');
+    overlay.classList.remove('active');
+
+    setTimeout(() => {
+        panel.classList.add('hidden');
+        overlay.classList.add('hidden');
+    }, 300);
+};
+
+// Edit location from panel
+window.editLocationFromPanel = function(locationId) {
+    if (window.currentLocDetails) {
+        const loc = window.currentLocDetails;
+        closeProjectPanel();
+        editLocation(loc.id, loc.name, loc.address || '', loc.client_rate || 0, loc.is_active, loc.approx_doc_count || 0);
+    }
+};
+
+// Project panel event handlers
+$('projectPanelClose')?.addEventListener('click', closeProjectPanel);
+$('projectPanelOverlay')?.addEventListener('click', closeProjectPanel);
+
+// Escape key to close panel
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const panel = $('projectPanel');
+        if (panel && panel.classList.contains('active')) {
+            closeProjectPanel();
+        }
+    }
+});
 
 // =================== EMPLOYEES ===================
 
@@ -2251,8 +2710,9 @@ async function loadExpenses() {
 
     // Show loading state
     const loadingTbody = $('expensesList');
-    if (loadingTbody) loadingTbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
+    if (loadingTbody) loadingTbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:40px;"><i class="fas fa-spinner fa-spin"></i> Loading...</td></tr>';
     if ($('expensesTotal')) $('expensesTotal').textContent = '...';
+    if ($('expensesTotalCard')) $('expensesTotalCard').textContent = 'Loading...';
 
     try {
         const expenses = await apiFetch(`/expenses?${params.toString()}`);
@@ -2260,8 +2720,10 @@ async function loadExpenses() {
         if (!tbody) return;
 
         if (expenses.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:20px;">No expenses found</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:20px;">No expenses found</td></tr>`;
             if ($('expensesTotal')) $('expensesTotal').textContent = '₹0';
+            if ($('expensesTotalCard')) $('expensesTotalCard').textContent = '₹0';
+            if ($('expensesCountCard')) $('expensesCountCard').textContent = '0 entries';
             return;
         }
         let total = 0;
@@ -2286,6 +2748,8 @@ async function loadExpenses() {
             </tr>`;
         }).join('');
         if ($('expensesTotal')) $('expensesTotal').textContent = '₹' + formatNumber(total);
+        if ($('expensesTotalCard')) $('expensesTotalCard').textContent = '₹' + formatNumber(total);
+        if ($('expensesCountCard')) $('expensesCountCard').textContent = expenses.length + ' entries';
     } catch (e) { console.error(e); }
 }
 
@@ -2507,6 +2971,13 @@ $('expensesStartDate')?.addEventListener('change', loadExpenses);
 $('expensesEndDate')?.addEventListener('change', loadExpenses);
 $('expensesLocationFilter')?.addEventListener('change', loadExpenses);
 
+// Clear date filter button for expenses
+$('clearDateFilterBtn')?.addEventListener('click', () => {
+    if ($('expensesStartDate')) $('expensesStartDate').value = '';
+    if ($('expensesEndDate')) $('expensesEndDate').value = '';
+    loadExpenses();
+});
+
 // Initialize date filters with current month
 function initializeDateFilters() {
     const today = new Date();
@@ -2519,9 +2990,8 @@ function initializeDateFilters() {
     if ($('dashboardStartDate')) $('dashboardStartDate').value = formatDate(firstDay);
     if ($('dashboardEndDate')) $('dashboardEndDate').value = formatDate(lastDay);
 
-    // Expenses date filters
-    if ($('expensesStartDate')) $('expensesStartDate').value = formatDate(firstDay);
-    if ($('expensesEndDate')) $('expensesEndDate').value = formatDate(lastDay);
+    // Expenses date filters - leave empty by default to show all expenses
+    // Users can filter by date if needed
 }
 
 // Populate expenses location filter

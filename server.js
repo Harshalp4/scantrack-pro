@@ -228,10 +228,19 @@ app.get('/api/locations', authenticate, async (req, res) => {
         } else {
             locations = await db.prepare('SELECT * FROM locations WHERE id = ? AND is_active = 1').all(req.user.location_id);
         }
-        // Add employee count for each location
+        // Add employee count and total scans for each location
         for (let i = 0; i < locations.length; i++) {
             const count = await db.prepare('SELECT COUNT(*) as count FROM users WHERE location_id = ? AND role != ? AND is_active = 1').get(locations[i].id, 'super_admin');
             locations[i].employee_count = count.count;
+
+            // Get total scans for this location (sum of all scan_count from daily_records for users in this location)
+            const scans = await db.prepare(`
+                SELECT COALESCE(SUM(dr.scan_count), 0) as total_scans
+                FROM daily_records dr
+                INNER JOIN users u ON dr.user_id = u.id
+                WHERE u.location_id = ?
+            `).get(locations[i].id);
+            locations[i].total_scans = scans.total_scans || 0;
         }
         res.json(locations);
     } catch (err) {
@@ -240,11 +249,11 @@ app.get('/api/locations', authenticate, async (req, res) => {
 });
 
 app.post('/api/locations', authenticate, authorize('super_admin'), async (req, res) => {
-    const { name, address, client_rate } = req.body;
+    const { name, address, client_rate, approx_doc_count } = req.body;
     if (!name) return res.status(400).json({ error: 'Location name is required' });
     try {
-        const result = await db.prepare('INSERT INTO locations (name, address, client_rate) VALUES (?, ?, ?)').run(name, address || '', client_rate || 0);
-        res.json({ id: result.lastInsertRowid, name, address, client_rate, message: 'Location created successfully' });
+        const result = await db.prepare('INSERT INTO locations (name, address, client_rate, approx_doc_count) VALUES (?, ?, ?, ?)').run(name, address || '', client_rate || 0, approx_doc_count || 0);
+        res.json({ id: result.lastInsertRowid, name, address, client_rate, approx_doc_count, message: 'Location created successfully' });
     } catch (err) {
         if (err.message.includes('UNIQUE')) {
             return res.status(400).json({ error: 'Location name already exists' });
@@ -255,8 +264,8 @@ app.post('/api/locations', authenticate, authorize('super_admin'), async (req, r
 
 app.put('/api/locations/:id', authenticate, authorize('super_admin'), async (req, res) => {
     try {
-        const { name, address, is_active, client_rate } = req.body;
-        await db.prepare('UPDATE locations SET name = COALESCE(?, name), address = COALESCE(?, address), is_active = COALESCE(?, is_active), client_rate = COALESCE(?, client_rate) WHERE id = ?').run(name, address, is_active, client_rate, req.params.id);
+        const { name, address, is_active, client_rate, approx_doc_count } = req.body;
+        await db.prepare('UPDATE locations SET name = COALESCE(?, name), address = COALESCE(?, address), is_active = COALESCE(?, is_active), client_rate = COALESCE(?, client_rate), approx_doc_count = COALESCE(?, approx_doc_count) WHERE id = ?').run(name, address, is_active, client_rate, approx_doc_count, req.params.id);
         res.json({ message: 'Location updated successfully' });
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -847,7 +856,7 @@ app.get('/api/dashboard/simple', authenticate, async (req, res) => {
         const scanRateSetting = await db.prepare("SELECT value FROM settings WHERE key = 'scan_rate'").get();
         const globalRate = parseFloat(scanRateSetting?.value || 0.10);
 
-        let locationsQuery = `SELECT id, name, client_rate FROM locations WHERE is_active = 1`;
+        let locationsQuery = `SELECT id, name, client_rate, approx_doc_count FROM locations WHERE is_active = 1`;
         const locations = location_id
             ? await db.prepare(locationsQuery + ' AND id = ?').all(location_id)
             : await db.prepare(locationsQuery).all();
@@ -919,7 +928,8 @@ app.get('/api/dashboard/simple', authenticate, async (req, res) => {
             total_scans: locationData.reduce((sum, l) => sum + l.total_scans, 0),
             total_employee_cost: locationData.reduce((sum, l) => sum + l.employee_cost, 0),
             total_expenses: locationData.reduce((sum, l) => sum + l.expenses, 0),
-            total_revenue: locationData.reduce((sum, l) => sum + l.revenue, 0)
+            total_revenue: locationData.reduce((sum, l) => sum + l.revenue, 0),
+            total_doc_count: locations.reduce((sum, l) => sum + (l.approx_doc_count || 0), 0)
         };
 
         res.json({ locations: locationData, totals });

@@ -177,6 +177,14 @@ async function initDatabase() {
         // Column already exists, ignore error
     }
 
+    // Add approx_doc_count column to locations if it doesn't exist
+    try {
+        await db.exec(`ALTER TABLE locations ADD COLUMN approx_doc_count INTEGER DEFAULT 0`);
+        console.log('✅ Added approx_doc_count column to locations table');
+    } catch (e) {
+        // Column already exists, ignore error
+    }
+
     // Create indexes
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_records_date ON daily_records(record_date)`);
     await db.exec(`CREATE INDEX IF NOT EXISTS idx_records_user ON daily_records(user_id)`);
