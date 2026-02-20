@@ -259,8 +259,31 @@ $$('.nav-item').forEach(item => {
 });
 
 // Mobile sidebar
-$('mobileSidebarToggle')?.addEventListener('click', () => {
-    document.querySelector('.sidebar').classList.toggle('open');
+const sidebar = document.querySelector('.sidebar');
+const sidebarOverlay = $('sidebarOverlay');
+
+function toggleSidebar() {
+    sidebar.classList.toggle('open');
+    sidebarOverlay?.classList.toggle('active');
+    document.body.style.overflow = sidebar.classList.contains('open') ? 'hidden' : '';
+}
+
+function closeSidebar() {
+    sidebar.classList.remove('open');
+    sidebarOverlay?.classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+$('mobileSidebarToggle')?.addEventListener('click', toggleSidebar);
+sidebarOverlay?.addEventListener('click', closeSidebar);
+
+// Close sidebar when clicking a nav link on mobile
+document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', () => {
+        if (window.innerWidth <= 768) {
+            closeSidebar();
+        }
+    });
 });
 
 // =================== LOAD LOCATIONS FILTER ===================
