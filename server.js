@@ -891,6 +891,32 @@ app.get('/api/dashboard/simple', authenticate, async (req, res) => {
         const expensesMap = {};
         expensesByLocation.forEach(e => expensesMap[e.location_id] = e.total_expenses);
 
+        // Get today's and yesterday's scan count
+        const today = new Date().toISOString().split('T')[0];
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+
+        let locationFilter = location_id ? ' AND u.location_id = ?' : '';
+
+        const todayParams = location_id ? [today, location_id] : [today];
+        const todayResult = await db.prepare(`
+            SELECT COALESCE(SUM(dr.scan_count), 0) as total
+            FROM daily_records dr
+            JOIN users u ON dr.user_id = u.id
+            WHERE dr.record_date = ? AND dr.status = 'present'${locationFilter}
+        `).get(...todayParams);
+        const todayScans = todayResult?.total || 0;
+
+        const yesterdayParams = location_id ? [yesterdayStr, location_id] : [yesterdayStr];
+        const yesterdayResult = await db.prepare(`
+            SELECT COALESCE(SUM(dr.scan_count), 0) as total
+            FROM daily_records dr
+            JOIN users u ON dr.user_id = u.id
+            WHERE dr.record_date = ? AND dr.status = 'present'${locationFilter}
+        `).get(...yesterdayParams);
+        const yesterdayScans = yesterdayResult?.total || 0;
+
         const locationData = locations.map(loc => {
             const locRecords = allRecords.filter(r => r.location_id === loc.id);
 
@@ -929,7 +955,9 @@ app.get('/api/dashboard/simple', authenticate, async (req, res) => {
             total_employee_cost: locationData.reduce((sum, l) => sum + l.employee_cost, 0),
             total_expenses: locationData.reduce((sum, l) => sum + l.expenses, 0),
             total_revenue: locationData.reduce((sum, l) => sum + l.revenue, 0),
-            total_doc_count: locations.reduce((sum, l) => sum + (l.approx_doc_count || 0), 0)
+            total_doc_count: locations.reduce((sum, l) => sum + (l.approx_doc_count || 0), 0),
+            today_scans: todayScans,
+            yesterday_scans: yesterdayScans
         };
 
         res.json({ locations: locationData, totals });

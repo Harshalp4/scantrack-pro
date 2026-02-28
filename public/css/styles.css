@@ -566,17 +566,21 @@ table {
 }
 
 .btn-logout {
-  background: none;
-  color: var(--text-muted);
-  font-size: 16px;
-  padding: 8px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+  padding: 8px 12px;
   border-radius: var(--radius-sm);
   transition: var(--transition-normal);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
 }
 
 .btn-logout:hover {
-  color: var(--danger);
-  background: var(--danger-bg);
+  color: #fff;
+  background: var(--danger);
 }
 
 /* ======================================
@@ -804,6 +808,25 @@ table {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.8);
   font-weight: 500;
+}
+
+.stat-sub-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+  flex-wrap: wrap;
+}
+
+.stat-sub {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.stat-sub i {
+  font-size: 10px;
 }
 
 /* ======================================
@@ -4054,5 +4077,271 @@ table {
 
   .expense-summary-amount {
     font-size: 28px;
+  }
+}
+
+/* ======================================
+   MOBILE COMPREHENSIVE FIXES
+   ====================================== */
+
+@media (max-width: 768px) {
+  /* Fix viewport and scrolling */
+  html, body {
+    height: 100%;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body {
+    position: relative;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+  }
+
+  /* App container full height */
+  .app-container {
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Main content scrollable */
+  .main-content {
+    flex: 1;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 80px; /* Extra space at bottom */
+  }
+
+  /* Page content proper scrolling */
+  .page {
+    min-height: calc(100vh - var(--topbar-height));
+    padding-bottom: 100px !important; /* Ensure bottom content visible */
+    overflow-y: visible;
+  }
+
+  /* Show scrollbars on mobile */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--bg-secondary);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--primary);
+    border-radius: 3px;
+  }
+
+  /* Fix touch targets - minimum 44px for buttons */
+  .btn,
+  button,
+  .nav-item,
+  input[type="submit"],
+  input[type="button"] {
+    min-height: 44px;
+    min-width: 44px;
+    touch-action: manipulation;
+  }
+
+  /* Proper spacing on left/right */
+  .page {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  /* Cards should not overflow */
+  .card {
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  /* Table containers scroll horizontally */
+  .card-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Fix data tables horizontal scroll */
+  .data-table-container,
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Ensure clickable elements have proper z-index */
+  .btn,
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Fix sidebar footer/logout button */
+  .sidebar-footer {
+    padding: 12px;
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-sidebar);
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .btn-logout {
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  /* Stats grid proper spacing */
+  .stats-grid {
+    padding: 0;
+    margin-bottom: 16px;
+  }
+
+  /* Fix modal on mobile */
+  .modal {
+    padding: 12px;
+    align-items: flex-start;
+    padding-top: 50px;
+  }
+
+  .modal-content {
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    margin: 0;
+    width: 100%;
+  }
+
+  /* Project panel full screen on mobile */
+  .project-panel,
+  .location-drawer {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .project-panel.open {
+    right: 0 !important;
+  }
+
+  /* Fix form inputs */
+  input, select, textarea {
+    font-size: 16px !important; /* Prevent zoom on iOS */
+  }
+
+  /* Page header fix */
+  .page-header {
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 16px !important;
+  }
+
+  .page-header h2 {
+    width: 100%;
+    font-size: 18px;
+  }
+
+  .page-header .btn {
+    flex: 1;
+    justify-content: center;
+  }
+
+  /* Projects grid spacing */
+  .projects-grid {
+    gap: 16px;
+    padding: 0;
+  }
+
+  .project-card {
+    margin: 0;
+  }
+
+  /* Dashboard filters stack */
+  .dashboard-filters {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch !important;
+  }
+
+  .dashboard-filters > * {
+    width: 100%;
+  }
+
+  .date-range-filter {
+    flex-direction: column;
+  }
+
+  .date-range-filter input {
+    width: 100%;
+  }
+
+  /* Fix tracking page */
+  .tracking-controls {
+    padding: 12px;
+  }
+
+  /* Employee list proper spacing */
+  .employee-row {
+    padding: 12px;
+    margin-bottom: 8px;
+  }
+
+  /* Settings page */
+  .settings-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Ensure all content is accessible */
+  .card-body,
+  .modal-body {
+    padding: 12px;
+  }
+}
+
+/* Extra small devices */
+@media (max-width: 380px) {
+  .page {
+    padding: 8px !important;
+    padding-bottom: 120px !important;
+  }
+
+  .stat-card {
+    padding: 10px;
+  }
+
+  .stat-value {
+    font-size: 16px;
+  }
+
+  .stat-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .btn {
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .card-header h3 {
+    font-size: 13px;
+  }
+
+  /* Single column for everything */
+  .stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }

@@ -378,6 +378,12 @@ async function loadDashboard() {
 
         // Update summary cards
         $('totalScansAll').textContent = formatNumber(totals.total_scans);
+        if ($('todayScans')) {
+            $('todayScans').innerHTML = `<i class="fas fa-calendar-day"></i> Today: ${formatNumber(totals.today_scans || 0)}`;
+        }
+        if ($('yesterdayScans')) {
+            $('yesterdayScans').innerHTML = `<i class="fas fa-history"></i> Yesterday: ${formatNumber(totals.yesterday_scans || 0)}`;
+        }
         if ($('totalDocCountAll')) $('totalDocCountAll').textContent = formatNumber(totals.total_doc_count || 0);
         $('totalRevenueAll').textContent = '₹' + formatNumber(totals.total_revenue);
         $('totalLabourAll').textContent = '₹' + formatNumber(totals.total_employee_cost);

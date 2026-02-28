@@ -3,7 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="description" content="Daily Scanning Tracker - Track scanning operations across multiple locations">
   <title>ScanTrack Pro - Daily Scanning Tracker</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -90,7 +90,7 @@
             <span class="user-role" id="userRole">Super Admin</span>
           </div>
         </div>
-        <button id="logoutBtn" class="btn-logout"><i class="fas fa-sign-out-alt"></i></button>
+        <button id="logoutBtn" class="btn-logout"><i class="fas fa-sign-out-alt"></i> Logout</button>
       </div>
     </aside>
 
@@ -250,23 +250,27 @@
               <div class="stat-info">
                 <span class="stat-value" id="totalScansAll">0</span>
                 <span class="stat-label">Total Images</span>
+                <span class="stat-sub-row">
+                  <span class="stat-sub" id="todayScans"><i class="fas fa-calendar-day"></i> Today: 0</span>
+                  <span class="stat-sub" id="yesterdayScans"><i class="fas fa-history"></i> Yesterday: 0</span>
+                </span>
               </div>
             </div>
-            <div class="stat-card stat-gradient-5">
+            <div class="stat-card stat-gradient-5 admin-only">
               <div class="stat-icon"><i class="fas fa-folder-open"></i></div>
               <div class="stat-info">
                 <span class="stat-value" id="totalDocCountAll">0</span>
                 <span class="stat-label">Expected Documents</span>
               </div>
             </div>
-            <div class="stat-card stat-gradient-2">
+            <div class="stat-card stat-gradient-2 admin-only">
               <div class="stat-icon"><i class="fas fa-rupee-sign"></i></div>
               <div class="stat-info">
                 <span class="stat-value" id="totalRevenueAll">₹0</span>
                 <span class="stat-label">Our Earnings</span>
               </div>
             </div>
-            <div class="stat-card stat-gradient-3">
+            <div class="stat-card stat-gradient-3 admin-only">
               <div class="stat-icon"><i class="fas fa-users"></i></div>
               <div class="stat-info">
                 <span class="stat-value" id="totalLabourAll">₹0</span>
